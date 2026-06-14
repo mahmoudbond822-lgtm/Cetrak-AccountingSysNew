@@ -1,0 +1,14 @@
+node_modules/
+.git/
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.log
+.env
+.env.*
+coverage/
+htmlcov/
+.gitignore
+*.md
