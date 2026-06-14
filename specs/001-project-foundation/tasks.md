@@ -49,16 +49,16 @@ description: "Task list for Project Foundation feature implementation"
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T009 Create `backend/config/settings/base.py` with Django settings (database, installed apps, middleware, JWT config, REST framework config)
-- [ ] T010 [P] Create `backend/config/settings/dev.py` inheriting base with debug mode and SQL logging
-- [ ] T011 [P] Create `backend/config/settings/prod.py` inheriting base with production settings
-- [ ] T012 Create `backend/config/urls.py` with root URL routing and API v1 prefix
-- [ ] T013 Create `backend/apps/core/models.py` with abstract BaseModel (UUID id, created_at, updated_at)
-- [ ] T014 Create `backend/apps/core/models.py` with Tenant model (name, status: Active/Suspended/Cancelled)
-- [ ] T015 Create `backend/apps/core/middleware.py` with TenantResolutionMiddleware (extracts X-Tenant-ID header, injects into request, provides tenant-scoped queryset filtering)
-- [ ] T016 Create database migrations for core app and apply them
-- [ ] T017 [P] Configure PostgreSQL in Docker Compose with UUID extension enabled
-- [ ] T018 Create database indexes for performance: tenant_id on all tenant-scoped models, unique (user_id, tenant_id) on Membership, email on User, token on Invitation
+- [X] T009 Create `backend/config/settings/base.py` with Django settings (database, installed apps, middleware, JWT config, REST framework config)
+- [X] T010 [P] Create `backend/config/settings/dev.py` inheriting base with debug mode and SQL logging
+- [X] T011 [P] Create `backend/config/settings/prod.py` inheriting base with production settings
+- [X] T012 Create `backend/config/urls.py` with root URL routing and API v1 prefix
+- [X] T013 [P] Create `backend/apps/core/models.py` with abstract BaseModel (UUID id, created_at, updated_at) and abstract TenantScopedModel (extends BaseModel, adds nullable tenant FK → Tenant)
+- [X] T014 Create `backend/apps/core/models.py` with Tenant model (inherits BaseModel, fields: name, status: Active/Suspended/Cancelled)
+- [X] T015 Create `backend/apps/core/middleware.py` with TenantResolutionMiddleware (extracts X-Tenant-ID header, injects into request, validates tenant exists and is Active, provides tenant-scoped queryset filtering for TenantScopedModel models)
+- [X] T016 Create database migrations for core app and apply them
+- [X] T017 [P] Configure PostgreSQL in Docker Compose with UUID extension enabled
+- [ ] T018 Create database indexes for performance: tenant_id on all TenantScopedModel subclasses, unique (user_id, tenant_id) on Membership, email on User, token on Invitation
 
 **Checkpoint**: Foundation ready - user story implementation can now begin
 
@@ -72,32 +72,32 @@ description: "Task list for Project Foundation feature implementation"
 
 ### Tests for User Story 1 ⚠️
 
-- [ ] T019 [P] [US1] Test register success returns 201 with tokens in `backend/apps/accounts/tests/test_auth_api.py`
-- [ ] T020 [P] [US1] Test register duplicate email returns 400 in `backend/apps/accounts/tests/test_auth_api.py`
-- [ ] T021 [P] [US1] Test login success returns 200 with tokens in `backend/apps/accounts/tests/test_auth_api.py`
-- [ ] T022 [P] [US1] Test login wrong password returns 401 in `backend/apps/accounts/tests/test_auth_api.py`
-- [ ] T023 [P] [US1] Test login disabled user returns 403 in `backend/apps/accounts/tests/test_auth_api.py`
-- [ ] T024 [P] [US1] Test login multi-tenant returns tenants array with null active_tenant in `backend/apps/accounts/tests/test_auth_api.py`
-- [ ] T025 [P] [US1] Test token refresh returns new access token in `backend/apps/accounts/tests/test_auth_api.py`
-- [ ] T026 [P] [US1] Test protected endpoint without token returns 401 in `backend/apps/accounts/tests/test_auth_api.py`
-- [ ] T027 [P] [US1] Test tenant isolation - user from tenant A cannot access tenant B data in `backend/apps/accounts/tests/test_tenant_isolation.py`
+- [X] T019 [P] [US1] Test register success returns 201 with tokens in `backend/apps/accounts/tests/test_auth_api.py`
+- [X] T020 [P] [US1] Test register duplicate email returns 400 in `backend/apps/accounts/tests/test_auth_api.py`
+- [X] T021 [P] [US1] Test login success returns 200 with tokens in `backend/apps/accounts/tests/test_auth_api.py`
+- [X] T022 [P] [US1] Test login wrong password returns 401 in `backend/apps/accounts/tests/test_auth_api.py`
+- [X] T023 [P] [US1] Test login disabled user returns 403 in `backend/apps/accounts/tests/test_auth_api.py`
+- [X] T024 [P] [US1] Test login multi-tenant returns tenants array with null active_tenant in `backend/apps/accounts/tests/test_auth_api.py`
+- [X] T025 [P] [US1] Test token refresh returns new access token in `backend/apps/accounts/tests/test_auth_api.py`
+- [X] T026 [P] [US1] Test protected endpoint without token returns 401 in `backend/apps/accounts/tests/test_auth_api.py`
+- [X] T027 [P] [US1] Test tenant isolation - user from tenant A cannot access tenant B data in `backend/apps/accounts/tests/test_tenant_isolation.py`
 
 ### Implementation for User Story 1
 
-- [ ] T028 [P] [US1] Create User model in `backend/apps/accounts/models.py` (email, password, display_name, status: Active/Invited/Disabled, UUID pk, timestamps)
-- [ ] T029 [P] [US1] Create Membership model in `backend/apps/accounts/models.py` (user FK, tenant FK, role: Admin/Accountant/Manager, unique constraint on user+tenant)
-- [ ] T030 [US1] Configure Django REST Framework settings for JWT authentication in `backend/config/settings/base.py`
-- [ ] T031 [US1] Create AuthService in `backend/apps/accounts/services.py` (register: creates User + Tenant + Membership; login: validates credentials, checks user/tenant status, returns JWT tokens)
-- [ ] T032 [US1] Create auth serializers in `backend/apps/accounts/serializers.py` (RegisterSerializer, LoginSerializer, TokenRefreshSerializer)
-- [ ] T033 [US1] Create auth views in `backend/apps/accounts/views.py` (RegisterView, LoginView, LogoutView, TokenRefreshView)
-- [ ] T034 [US1] Create URL routing in `backend/apps/accounts/urls.py` with all auth endpoints under `/api/v1/auth/`
-- [ ] T035 [P] [US1] Create LoginPage React component in `frontend/src/pages/LoginPage.jsx` (email + password form, remember me checkbox, error display, redirect to dashboard or tenant select)
-- [ ] T036 [P] [US1] Create RegisterPage React component in `frontend/src/pages/RegisterPage.jsx` (email + company name + password form, auto-login on success)
-- [ ] T037 [P] [US1] Create DashboardPage React component in `frontend/src/pages/DashboardPage.jsx` (empty state with company name, logout button)
-- [ ] T038 [P] [US1] Create TenantSelectPage React component in `frontend/src/pages/TenantSelectPage.jsx` (list of tenants, pick one to proceed)
-- [ ] T039 [P] [US1] Create API service module in `frontend/src/services/api.js` (axios instance with base URL, token interceptor, tenant header, auth endpoints)
-- [ ] T040 [P] [US1] Create ProtectedRoute component in `frontend/src/components/Layout/ProtectedRoute.jsx` (redirects to login if not authenticated)
-- [ ] T041 [US1] Wire up App.jsx routing (React Router: login, register, dashboard, tenant-select pages) with protected routes
+- [X] T028 [P] [US1] Create User model in `backend/apps/accounts/models.py` (inherits BaseModel, fields: email, password, display_name, status: Active/Invited/Disabled)
+- [X] T029 [P] [US1] Create Membership model in `backend/apps/accounts/models.py` (inherits TenantScopedModel, user FK, tenant FK from base, role: Admin/Accountant/Manager, unique constraint on user+tenant)
+- [X] T030 [US1] Configure Django REST Framework settings for JWT authentication in `backend/config/settings/base.py`
+- [X] T031 [US1] Create AuthService in `backend/apps/accounts/services.py` (register: creates User + Tenant + Membership; login: validates credentials, checks user/tenant status, returns JWT tokens)
+- [X] T032 [US1] Create auth serializers in `backend/apps/accounts/serializers.py` (RegisterSerializer, LoginSerializer, TokenRefreshSerializer)
+- [X] T033 [US1] Create auth views in `backend/apps/accounts/views.py` (RegisterView, LoginView, LogoutView, TokenRefreshView)
+- [X] T034 [US1] Create URL routing in `backend/apps/accounts/urls.py` with all auth endpoints under `/api/v1/auth/`
+- [X] T035 [P] [US1] Create LoginPage React component in `frontend/src/pages/LoginPage.jsx` (email + password form, remember me checkbox, error display, redirect to dashboard or tenant select)
+- [X] T036 [P] [US1] Create RegisterPage React component in `frontend/src/pages/RegisterPage.jsx` (email + company name + password form, auto-login on success)
+- [X] T037 [P] [US1] Create DashboardPage React component in `frontend/src/pages/DashboardPage.jsx` (empty state with company name, logout button)
+- [X] T038 [P] [US1] Create TenantSelectPage React component in `frontend/src/pages/TenantSelectPage.jsx` (list of tenants, pick one to proceed)
+- [X] T039 [P] [US1] Create API service module in `frontend/src/services/api.js` (axios instance with base URL, token interceptor, tenant header, auth endpoints)
+- [X] T040 [P] [US1] Create ProtectedRoute component in `frontend/src/components/Layout/ProtectedRoute.jsx` (redirects to login if not authenticated)
+- [X] T041 [US1] Wire up App.jsx routing (React Router: login, register, dashboard, tenant-select pages) with protected routes
 
 **Checkpoint**: User Story 1 complete — a user can register, log in, and see their dashboard with tenant isolation enforced.
 
@@ -125,7 +125,7 @@ description: "Task list for Project Foundation feature implementation"
 
 ### Implementation for User Story 2
 
-- [ ] T053 [P] [US2] Create Invitation model in `backend/apps/accounts/models.py` (tenant FK, email, role, token, expires_at, accepted_at)
+- [ ] T053 [P] [US2] Create Invitation model in `backend/apps/accounts/models.py` (inherits TenantScopedModel, tenant FK from base, email, role, token, expires_at, accepted_at)
 - [ ] T054 [US2] Create InvitationService in `backend/apps/accounts/services.py` (create invitation, generate token, validate token, accept invitation, cancel invitation)
 - [ ] T055 [US2] Create TeamService in `backend/apps/accounts/services.py` (list members, change role, remove member, last admin guard)
 - [ ] T056 [US2] Create team serializers in `backend/apps/accounts/serializers.py` (InvitationSerializer, MemberSerializer, RoleChangeSerializer)
