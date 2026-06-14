@@ -1,50 +1,69 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+  Sync Impact Report:
+  - Version change: N/A (initial constitution) → v1.0.0
+  - Modified principles: None (initial creation)
+  - Added sections: Multi-Tenancy, Accounting Integrity, API Rules, Code Standards,
+    AI Safety Rules, Security, Performance, MVP Discipline, Governance
+  - Removed sections: None
+  - Templates requiring updates: None (all templates are generic, no principle-specific refs)
+  - Follow-up TODOs: None
+-->
+
+# Cetrak Accounting System Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Multi-Tenancy (NON-NEGOTIABLE)
+Every table MUST include a `tenant_id` column. No query is allowed without tenant
+filtering. Tenant data isolation MUST be enforced via middleware at the application
+layer.
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+### II. Accounting Integrity (CRITICAL)
+Journal entries MUST always balance (debit = credit). No direct edits to posted
+entries are permitted. All financial operations MUST be auditable with a complete,
+immutable audit trail.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### III. API Rules
+All endpoints MUST be RESTful. Every endpoint MUST require authentication. Responses
+MUST follow a consistent JSON format with standardized error structures.
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+### IV. Code Standards
+Backend MUST use Django + DRF. A dedicated services layer is required — no fat
+views. Business logic MUST NOT reside in controllers/views; it belongs exclusively
+in the services layer.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### V. AI Safety Rules
+AI outputs are suggestions, not auto-applied. Every AI-generated response MUST
+include a confidence score. Users MUST explicitly confirm any critical actions
+before execution.
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+## Security & Performance Standards
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### VI. Security
+JWT authentication is required for all endpoints. Passwords MUST be hashed with
+bcrypt. Tenant data isolation MUST be enforced at both the database and application
+levels.
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+### VII. Performance
+All heavyweight tasks MUST be async (Celery). Database queries MUST be optimized
+with appropriate indexes on all JOIN, WHERE, and ORDER BY columns.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+## MVP Discipline
+
+### VIII. MVP Discipline
+No feature outside the defined project scope is permitted. Prioritize delivering
+a working system over perfection. Each iteration MUST deliver incremental,
+independently testable value.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+This constitution supersedes all other development practices. Amendments require:
+- Documentation of the proposed change
+- Approval from the project lead or designated reviewer
+- A migration plan for existing code or processes
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+All PRs and reviews MUST verify compliance with this constitution. Any deviation
+from non-negotiable principles MUST be explicitly justified in the Complexity
+Tracking section of implementation plans.
+
+**Version**: 1.0.0 | **Ratified**: 2026-06-13 | **Last Amended**: 2026-06-13

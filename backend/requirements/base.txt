@@ -1,0 +1,6 @@
+django>=5.0,<5.1
+djangorestframework>=3.14,<3.16
+djangorestframework-simplejwt>=5.3,<6.0
+psycopg2-binary>=2.9,<3.0
+python-decouple>=3.8,<4.0
+django-filter>=23.0,<24.0
