@@ -4,7 +4,7 @@ from django.db import models
 from datetime import timedelta
 from django.utils import timezone
 
-from apps.core.models import TenantScopedModel
+from apps.core.models import TenantScopedModel, TenantScopedQuerySet
 
 
 class UserManager(BaseUserManager):
@@ -54,6 +54,8 @@ class User(AbstractBaseUser):
 
 
 class Membership(models.Model):
+    objects = TenantScopedQuerySet.as_manager()
+
     class Role(models.TextChoices):
         ADMIN = "Admin", "Admin"
         ACCOUNTANT = "Accountant", "Accountant"
@@ -61,7 +63,7 @@ class Membership(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="memberships")
-    tenant = models.ForeignKey("core.Tenant", on_delete=models.CASCADE, related_name="memberships")
+    tenant = models.ForeignKey("core.Tenant", on_delete=models.CASCADE, related_name="memberships", db_index=True)
     role = models.CharField(
         max_length=20,
         choices=Role.choices,

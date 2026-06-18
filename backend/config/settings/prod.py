@@ -1,6 +1,13 @@
+from django.core.exceptions import ImproperlyConfigured
+
 from .base import *
 
 DEBUG = False
+
+if SECRET_KEY == "django-insecure-change-me-in-production":
+    raise ImproperlyConfigured(
+        "DJANGO_SECRET_KEY environment variable must be set in production."
+    )
 
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",")
 

@@ -2,6 +2,11 @@ import uuid
 from django.db import models
 
 
+class TenantScopedQuerySet(models.QuerySet):
+    def for_tenant(self, tenant_id):
+        return self.filter(tenant_id=tenant_id)
+
+
 class BaseModel(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -12,10 +17,11 @@ class BaseModel(models.Model):
 
 
 class TenantScopedModel(BaseModel):
+    objects = TenantScopedQuerySet.as_manager()
+
     tenant = models.ForeignKey(
         "core.Tenant",
         on_delete=models.CASCADE,
-        null=True,
     )
 
     class Meta:

@@ -5,8 +5,15 @@ from apps.accounts.models import User, Membership, Invitation
 class RegisterSerializer(serializers.Serializer):
     email = serializers.EmailField()
     password = serializers.CharField(min_length=8, write_only=True)
-    company_name = serializers.CharField(max_length=255)
+    company_name = serializers.CharField(max_length=255, required=False)
     invitation_token = serializers.CharField(required=False, write_only=True)
+
+    def validate(self, data):
+        if not data.get("invitation_token") and not data.get("company_name"):
+            raise serializers.ValidationError(
+                {"company_name": "Company name is required when not using an invitation."}
+            )
+        return data
 
 
 class LoginSerializer(serializers.Serializer):

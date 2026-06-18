@@ -1,3 +1,5 @@
+import datetime as dt_mod
+
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -24,27 +26,40 @@ def register_view(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     invitation_token = serializer.validated_data.get("invitation_token")
+    company_name = serializer.validated_data.get("company_name")
 
     if invitation_token:
+        if company_name:
+            display_name = company_name
+        else:
+            display_name = None
         inv_service = InvitationService()
         invitation, error = inv_service.validate_token(invitation_token)
         if error:
             return Response({"invitation_token": [error]}, status=status.HTTP_400_BAD_REQUEST)
 
-        if User.objects.filter(email=serializer.validated_data["email"]).exists():
+        from django.db import IntegrityError
+
+        try:
             user = User.objects.get(email=serializer.validated_data["email"])
-            membership, error = inv_service.accept_invitation(invitation_token, user)
-            if error:
-                return Response({"invitation_token": [error]}, status=status.HTTP_400_BAD_REQUEST)
-        else:
-            user = User.objects.create_user(
-                email=serializer.validated_data["email"],
-                password=serializer.validated_data["password"],
-            )
-            membership, error = inv_service.accept_invitation(invitation_token, user)
-            if error:
-                user.delete()
-                return Response({"invitation_token": [error]}, status=status.HTTP_400_BAD_REQUEST)
+            created = False
+        except User.DoesNotExist:
+            try:
+                user = User.objects.create_user(
+                    email=serializer.validated_data["email"],
+                    password=serializer.validated_data["password"],
+                    display_name=display_name,
+                )
+                created = True
+            except IntegrityError:
+                user = User.objects.get(email=serializer.validated_data["email"])
+                created = False
+
+        membership, error = inv_service.accept_invitation(invitation_token, user)
+        if error:
+            if created:
+                User.objects.filter(id=user.id).delete()
+            return Response({"invitation_token": [error]}, status=status.HTTP_400_BAD_REQUEST)
 
         refresh = RefreshToken()
         refresh["user_id"] = str(user.id)
@@ -122,11 +137,38 @@ def refresh_view(request):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        refresh = RefreshToken(serializer.validated_data["refresh"])
-        jti = refresh.get("jti")
+        old_refresh = RefreshToken(serializer.validated_data["refresh"])
+        jti = old_refresh.get("jti")
         if jti and BlacklistedToken.objects.filter(jti=jti).exists():
             raise Exception("Token blacklisted")
-        return Response({"access": str(refresh.access_token)})
+
+        user_id = old_refresh.get("user_id")
+        if user_id:
+            try:
+                user = User.objects.get(id=user_id)
+                if user.status == User.Status.DISABLED:
+                    return Response(
+                        {"detail": "Account has been disabled. Contact your administrator."},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+            except User.DoesNotExist:
+                raise Exception("User not found")
+
+        exp = old_refresh.get("exp")
+        if jti and exp:
+            BlacklistedToken.objects.get_or_create(
+                jti=jti,
+                defaults={"expires_at": dt_mod.datetime.fromtimestamp(exp, tz=dt_mod.timezone.utc)},
+            )
+
+        new_refresh = RefreshToken()
+        new_refresh["user_id"] = old_refresh.get("user_id")
+        new_refresh["tenant_id"] = old_refresh.get("tenant_id")
+
+        return Response({
+            "access": str(new_refresh.access_token),
+            "refresh": str(new_refresh),
+        })
     except Exception:
         return Response(
             {"detail": "Invalid or expired refresh token."},
@@ -257,6 +299,14 @@ def tenant_switch_view(request, tenant_id):
         return Response(
             {"detail": "Tenant not found or no membership."},
             status=status.HTTP_404_NOT_FOUND,
+        )
+
+    old_jti = request.auth.get("jti") if request.auth else None
+    old_exp = request.auth.get("exp") if request.auth else None
+    if old_jti and old_exp:
+        BlacklistedToken.objects.get_or_create(
+            jti=old_jti,
+            defaults={"expires_at": dt_mod.datetime.fromtimestamp(old_exp, tz=dt_mod.timezone.utc)},
         )
 
     refresh = RefreshToken()
