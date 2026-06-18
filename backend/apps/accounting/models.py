@@ -37,6 +37,8 @@ class JournalEntry(TenantScopedModel):
     date = models.DateField()
     description = models.TextField()
     reference = models.CharField(max_length=255)
+    posted = models.BooleanField(default=False)
+    posted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "accounting_journalentry"
@@ -63,6 +65,12 @@ class JournalEntry(TenantScopedModel):
     @property
     def is_balanced(self):
         return abs(self.total_debit - self.total_credit) < 0.01
+
+    def post_entry(self):
+        from django.utils import timezone
+        self.posted = True
+        self.posted_at = timezone.now()
+        self.save()
 
     def clean(self):
         if not self.is_balanced:

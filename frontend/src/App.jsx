@@ -4,6 +4,10 @@ import RegisterPage from './pages/RegisterPage'
 import DashboardPage from './pages/DashboardPage'
 import TenantSelectPage from './pages/TenantSelectPage'
 import TeamPage from './pages/TeamPage'
+import AccountsPage from './pages/accounting/AccountsPage'
+import JournalPage from './pages/accounting/JournalPage'
+import LedgerPage from './pages/accounting/LedgerPage'
+import ReportsPage from './pages/accounting/ReportsPage'
 import ProtectedRoute from './components/Layout/ProtectedRoute'
 
 function App() {
@@ -25,6 +29,38 @@ function App() {
           element={
             <ProtectedRoute>
               <TeamPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/accounting/accounts"
+          element={
+            <ProtectedRoute>
+              <AccountsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/accounting/journal"
+          element={
+            <ProtectedRoute>
+              <JournalPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/accounting/ledger/:accountId"
+          element={
+            <ProtectedRoute>
+              <LedgerPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/accounting/reports"
+          element={
+            <ProtectedRoute>
+              <ReportsPage />
             </ProtectedRoute>
           }
         />
