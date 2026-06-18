@@ -34,7 +34,7 @@ Establish the foundational infrastructure for the Cetrak ERP system: Django proj
 
 | Article | Principle | Status | Notes |
 |---------|-----------|--------|-------|
-| I | Multi-Tenancy | ✅ Compliant | tenant_id on every table, middleware enforcement planned |
+| I | Multi-Tenancy | ✅ Compliant | BaseModel + TenantScopedModel split: TenantScopedModel adds tenant FK for all tenant-scoped tables; Tenant model (tenant root) inherits BaseModel without self-reference |
 | III | API Rules | ✅ Compliant | RESTful endpoints, JWT auth, consistent JSON |
 | IV | Code Standards | ✅ Compliant | Django + DRF, services layer planned |
 | VI | Security | ✅ Compliant | JWT + bcrypt + tenant isolation planned |
@@ -74,7 +74,7 @@ backend/
 ├── apps/
 │   ├── core/
 │   │   ├── __init__.py
-│   │   ├── models.py          # BaseModel, Tenant
+│   │   ├── models.py          # BaseModel, TenantScopedModel, Tenant
 │   │   ├── middleware.py       # Tenant resolution middleware
 │   │   └── admin.py
 │   ├── accounts/
@@ -131,6 +131,8 @@ infra/
 
 No constitutional violations to justify. Foundation feature is straightforward.
 
+**Design note**: BaseModel split into BaseModel + TenantScopedModel per spec clarification (2026-06-14) to enforce Constitution Article I without circular Tenant self-reference.
+
 ## Phase 0: Research
 
 *All decisions resolved in spec clarifications. No NEEDS CLARIFICATION markers remain in the spec.*
@@ -143,11 +145,15 @@ Key research findings consolidated in [research.md](./research.md).
 
 Detailed entity definitions in [data-model.md](./data-model.md).
 
-Core entities:
-- **Tenant**: id (UUID), name, status (Active/Suspended/Cancelled), created_at, updated_at
-- **User**: id (UUID), email (unique), password (hashed), display_name, status (Active/Invited/Disabled), created_at, updated_at
-- **Membership**: id (UUID), user_id (FK), tenant_id (FK), role (Admin/Accountant/Manager), created_at, updated_at
-- **Invitation**: id (UUID), tenant_id (FK), email, role, token, expires_at, accepted_at, created_at
+There are two abstract base classes:
+- **BaseModel** (abstract): id (UUID PK), created_at, updated_at — used by global entities (User, Tenant).
+- **TenantScopedModel** (abstract, inherits BaseModel): adds tenant_id (FK → Tenant, nullable) — used by tenant-scoped entities (Membership, Invitation, and all future accounting entities).
+
+Concrete entities:
+- **Tenant**: inherits BaseModel. Fields: name, status (Active/Suspended/Cancelled).
+- **User**: inherits BaseModel. Fields: email (unique), password (hashed), display_name, status (Active/Invited/Disabled).
+- **Membership**: inherits TenantScopedModel. Fields: user_id (FK), tenant_id (FK), role (Admin/Accountant/Manager).
+- **Invitation**: inherits TenantScopedModel. Fields: tenant_id (FK), email, role, token, expires_at, accepted_at.
 
 ### API Contracts
 

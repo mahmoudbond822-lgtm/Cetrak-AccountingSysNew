@@ -33,6 +33,9 @@ Thumbs.db
 # Docker
 *.log*
 
+# Database
+backend/db.sqlite3
+
 # Coverage
 coverage/
 htmlcov/

@@ -10,6 +10,12 @@
 
 ## Clarifications
 
+### Session 2026-06-14
+
+- Q: Should BaseModel include a tenant_id FK to enforce Constitution Article I? → A: Yes. Split BaseModel into BaseModel (generic UUID + timestamps) and TenantScopedModel (adds nullable tenant FK). Tenant model inherits from BaseModel, all tenant-scoped models inherit from TenantScopedModel.
+- Q: Logout strategy — should tokens be invalidated server-side or just cleared client-side? → A: Server-side token blacklisting. Invalidated tokens stored in DB/cache with TTL matching remaining lifetime. This prevents replay of stolen tokens after logout, aligning with Constitution Article VI (Security).
+- Q: Remember me — should token lifetimes differ based on the remember_me flag? → A: Yes. Default 24h access + 7d refresh. With remember_me, 24h access + 30d refresh. Override token lifetimes in login service based on flag.
+
 ### Session 2026-06-13
 
 - Q: Invitation flow — what if the invited person already has a system account? → A: They receive a notification that they've been added to a new organization, and it appears in their tenant switcher on next login.
