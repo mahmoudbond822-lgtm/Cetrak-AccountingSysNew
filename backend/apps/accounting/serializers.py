@@ -31,10 +31,12 @@ class AccountSerializer(serializers.ModelSerializer):
             return value
         if not isinstance(value, models.Account):
             try:
-                value = models.Account.objects.get(pk=value)
+                value = models.Account.objects.for_tenant(
+                    self.context["request"].tenant_id
+                ).get(pk=value)
             except models.Account.DoesNotExist:
                 raise serializers.ValidationError(
-                    f"Parent account with id {value} does not exist."
+                    "Parent account does not exist."
                 )
         depth = 0
         current = value
@@ -52,11 +54,19 @@ class AccountSerializer(serializers.ModelSerializer):
         return value
 
 
+class TenantScopedAccountField(serializers.PrimaryKeyRelatedField):
+    def get_queryset(self):
+        request = self.context.get("request")
+        if request and hasattr(request, "tenant_id"):
+            return models.Account.objects.for_tenant(request.tenant_id)
+        return models.Account.objects.none()
+
+
 class JournalEntryLineSerializer(serializers.ModelSerializer):
     account_name = serializers.CharField(source="account.name", read_only=True)
     account_type = serializers.CharField(source="account.type", read_only=True)
-    account_id = serializers.PrimaryKeyRelatedField(
-        queryset=models.Account.objects.all(),
+    account_id = TenantScopedAccountField(
+        queryset=models.Account.objects.none(),
     )
 
     class Meta:

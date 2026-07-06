@@ -1052,6 +1052,273 @@ class MultiTenantIsolationTests(APITestCase):
         )
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_cross_tenant_parent_account_rejected(self):
+        h_a = _headers(self.client, email="admin@a.com", tenant=self.tenant_a.id)
+        h_b = _headers(self.client, email="admin@b.com", tenant=self.tenant_b.id)
+
+        acct_b = self.client.post(
+            reverse("account-list"),
+            {"name": "TenantB-Asset", "type": "Asset"},
+            format="json",
+            **h_b,
+        ).data
+
+        resp = self.client.post(
+            reverse("account-list"),
+            {"name": "TenantA-Child", "type": "Asset", "parent_id": acct_b["id"]},
+            format="json",
+            **h_a,
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+        list_a = self.client.get(reverse("account-list"), **h_a).data
+        self.assertEqual(len(list_a), 0)
+
+    def test_cross_tenant_journal_line_rejected(self):
+        h_a = _headers(self.client, email="admin@a.com", tenant=self.tenant_a.id)
+        h_b = _headers(self.client, email="admin@b.com", tenant=self.tenant_b.id)
+
+        acct_a = self.client.post(
+            reverse("account-list"),
+            {"name": "Cash", "type": "Asset"},
+            format="json",
+            **h_a,
+        ).data
+        rev_a = self.client.post(
+            reverse("account-list"),
+            {"name": "Revenue", "type": "Revenue"},
+            format="json",
+            **h_a,
+        ).data
+        acct_b = self.client.post(
+            reverse("account-list"),
+            {"name": "Cash", "type": "Asset"},
+            format="json",
+            **h_b,
+        ).data
+
+        resp = self.client.post(
+            reverse("journalentry-list"),
+            {
+                "date": "2026-07-06",
+                "description": "Cross-tenant attempt",
+                "reference": "JE-XT-001",
+                "lines": [
+                    {"account_id": acct_b["id"], "debit": "100.00"},
+                    {"account_id": rev_a["id"], "credit": "100.00"},
+                ],
+            },
+            format="json",
+            **h_a,
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+        list_a = self.client.get(reverse("journalentry-list"), **h_a).data
+        self.assertEqual(len(list_a), 0)
+
+    def test_mixed_tenant_journal_entry_rejected(self):
+        h_a = _headers(self.client, email="admin@a.com", tenant=self.tenant_a.id)
+        h_b = _headers(self.client, email="admin@b.com", tenant=self.tenant_b.id)
+
+        acct_a = self.client.post(
+            reverse("account-list"),
+            {"name": "Cash", "type": "Asset"},
+            format="json",
+            **h_a,
+        ).data
+        rev_a = self.client.post(
+            reverse("account-list"),
+            {"name": "Revenue", "type": "Revenue"},
+            format="json",
+            **h_a,
+        ).data
+        acct_b = self.client.post(
+            reverse("account-list"),
+            {"name": "Cash", "type": "Asset"},
+            format="json",
+            **h_b,
+        ).data
+        rev_b = self.client.post(
+            reverse("account-list"),
+            {"name": "Revenue", "type": "Revenue"},
+            format="json",
+            **h_b,
+        ).data
+
+        entry_count_before = len(self.client.get(
+            reverse("journalentry-list"), **h_a
+        ).data)
+        acct_count_before = len(self.client.get(
+            reverse("account-list"), **h_a
+        ).data)
+
+        resp = self.client.post(
+            reverse("journalentry-list"),
+            {
+                "date": "2026-07-06",
+                "description": "Mixed tenant entry",
+                "reference": "JE-MIX-001",
+                "lines": [
+                    {"account_id": acct_a["id"], "debit": "200.00"},
+                    {"account_id": rev_b["id"], "credit": "200.00"},
+                ],
+            },
+            format="json",
+            **h_a,
+        )
+        self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
+
+        entry_count_after = len(self.client.get(
+            reverse("journalentry-list"), **h_a
+        ).data)
+        acct_count_after = len(self.client.get(
+            reverse("account-list"), **h_a
+        ).data)
+        self.assertEqual(entry_count_before, entry_count_after)
+        self.assertEqual(acct_count_before, acct_count_after)
+
+    def test_cross_tenant_no_side_effects(self):
+        from apps.accounting.models import JournalEntry, JournalEntryLine
+
+        h_a = _headers(self.client, email="admin@a.com", tenant=self.tenant_a.id)
+        h_b = _headers(self.client, email="admin@b.com", tenant=self.tenant_b.id)
+
+        acct_a = self.client.post(
+            reverse("account-list"),
+            {"name": "Cash", "type": "Asset"},
+            format="json",
+            **h_a,
+        ).data
+        rev_a = self.client.post(
+            reverse("account-list"),
+            {"name": "Revenue", "type": "Revenue"},
+            format="json",
+            **h_a,
+        ).data
+        acct_b = self.client.post(
+            reverse("account-list"),
+            {"name": "Cash", "type": "Asset"},
+            format="json",
+            **h_b,
+        ).data
+
+        je_count_a_before = JournalEntry.objects.for_tenant(self.tenant_a.id).count()
+        je_count_b_before = JournalEntry.objects.for_tenant(self.tenant_b.id).count()
+        line_count_a_before = JournalEntryLine.objects.filter(
+            entry__tenant_id=self.tenant_a.id
+        ).count()
+        line_count_b_before = JournalEntryLine.objects.filter(
+            entry__tenant_id=self.tenant_b.id
+        ).count()
+
+        self.client.post(
+            reverse("journalentry-list"),
+            {
+                "date": "2026-07-06",
+                "description": "Cross-tenant attempt",
+                "reference": "JE-SE-001",
+                "lines": [
+                    {"account_id": acct_b["id"], "debit": "100.00"},
+                    {"account_id": rev_a["id"], "credit": "100.00"},
+                ],
+            },
+            format="json",
+            **h_a,
+        )
+
+        je_count_a_after = JournalEntry.objects.for_tenant(self.tenant_a.id).count()
+        je_count_b_after = JournalEntry.objects.for_tenant(self.tenant_b.id).count()
+        line_count_a_after = JournalEntryLine.objects.filter(
+            entry__tenant_id=self.tenant_a.id
+        ).count()
+        line_count_b_after = JournalEntryLine.objects.filter(
+            entry__tenant_id=self.tenant_b.id
+        ).count()
+
+        self.assertEqual(je_count_a_before, je_count_a_after)
+        self.assertEqual(je_count_b_before, je_count_b_after)
+        self.assertEqual(line_count_a_before, line_count_a_after)
+        self.assertEqual(line_count_b_before, line_count_b_after)
+
+    def test_same_tenant_child_account_after_isolation(self):
+        h_a = _headers(self.client, email="admin@a.com", tenant=self.tenant_a.id)
+
+        parent = self.client.post(
+            reverse("account-list"),
+            {"name": "Parent", "type": "Asset"},
+            format="json",
+            **h_a,
+        ).data
+
+        child = self.client.post(
+            reverse("account-list"),
+            {"name": "Child", "type": "Asset", "parent_id": parent["id"]},
+            format="json",
+            **h_a,
+        ).data
+        self.assertEqual(child["parent_id"], parent["id"])
+
+    def test_same_tenant_journal_entry_after_isolation(self):
+        h_a = _headers(self.client, email="admin@a.com", tenant=self.tenant_a.id)
+
+        cash = self.client.post(
+            reverse("account-list"),
+            {"name": "Cash", "type": "Asset"},
+            format="json",
+            **h_a,
+        ).data
+        rev = self.client.post(
+            reverse("account-list"),
+            {"name": "Revenue", "type": "Revenue"},
+            format="json",
+            **h_a,
+        ).data
+
+        resp = self.client.post(
+            reverse("journalentry-list"),
+            {
+                "date": "2026-07-06",
+                "description": "Same tenant entry",
+                "reference": "JE-ST-001",
+                "lines": [
+                    {"account_id": cash["id"], "debit": "500.00"},
+                    {"account_id": rev["id"], "credit": "500.00"},
+                ],
+            },
+            format="json",
+            **h_a,
+        )
+        self.assertEqual(resp.status_code, status.HTTP_201_CREATED)
+
+    def test_inaccessible_account_error_safe(self):
+        h_a = _headers(self.client, email="admin@a.com", tenant=self.tenant_a.id)
+
+        acct_b = self.client.post(
+            reverse("account-list"),
+            {"name": "Secret", "type": "Asset"},
+            format="json",
+            **_headers(self.client, email="admin@b.com", tenant=self.tenant_b.id),
+        ).data
+
+        resp_parent = self.client.post(
+            reverse("account-list"),
+            {"name": "X", "type": "Asset", "parent_id": acct_b["id"]},
+            format="json",
+            **h_a,
+        )
+        unknown_uuid = "00000000-0000-0000-0000-000000000000"
+        resp_parent_unknown = self.client.post(
+            reverse("account-list"),
+            {"name": "Y", "type": "Asset", "parent_id": unknown_uuid},
+            format="json",
+            **h_a,
+        )
+        self.assertEqual(resp_parent.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(resp_parent_unknown.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertNotIn(acct_b["name"], str(resp_parent.data))
+        self.assertNotIn("Secret", str(resp_parent.data))
+        self.assertNotIn("Asset", str(resp_parent.data))
+
 
 class APIErrorHandlingTests(BaseSetup):
 
