@@ -35,6 +35,7 @@ Thumbs.db
 
 # Database
 backend/db.sqlite3
+backend/test_db.sqlite3
 
 # Coverage
 coverage/
