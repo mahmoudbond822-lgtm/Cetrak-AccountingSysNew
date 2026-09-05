@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Modal from '../../shared/Modal'
 import Button from '../../shared/Button'
 import Input from '../../shared/Input'
+import ProductSelect from '../../inventory/ProductSelect'
 import { salesService } from '../../../services/salesService'
 
 const fieldStyle = { display: 'flex', flexDirection: 'column', gap: '0.375rem', marginBottom: '1rem' }
@@ -10,12 +11,12 @@ const selectStyle = {
   borderRadius: '6px', fontSize: '0.875rem', outline: 'none',
 }
 const lineHeaderStyle = {
-  display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 40px',
+  display: 'grid', gridTemplateColumns: '1.5fr 1.5fr 1fr 1fr 1fr 40px',
   gap: '0.5rem', fontWeight: 600, fontSize: '0.75rem',
   padding: '0.25rem 0', borderBottom: '1px solid var(--border)',
 }
 const lineRowStyle = {
-  display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 40px',
+  display: 'grid', gridTemplateColumns: '1.5fr 1.5fr 1fr 1fr 1fr 40px',
   gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center',
 }
 const totalsRowStyle = {
@@ -30,7 +31,7 @@ const num = (v) => {
 const fmt = (v) => Number(v || 0).toFixed(2)
 
 function emptyLine() {
-  return { key: crypto.randomUUID?.() ?? Math.random(), description: '', quantity: '1', unit_price: '', tax_rate: '0' }
+  return { key: crypto.randomUUID?.() ?? Math.random(), product_id: null, description: '', quantity: '1', unit_price: '', tax_rate: '0' }
 }
 
 function seededForm(invoice) {
@@ -54,6 +55,7 @@ function seededForm(invoice) {
     notes: invoice.notes || '',
     lines: invoice.lines.map((l) => ({
       key: l.id,
+      product_id: l.product_id || null,
       description: l.description,
       quantity: l.quantity,
       unit_price: l.unit_price,
@@ -106,6 +108,7 @@ export default function InvoiceForm({ open, onClose, invoice, customers, onSaved
     const lines = form.lines
       .filter((l) => l.description && num(l.quantity) > 0 && l.unit_price !== '')
       .map((l) => ({
+        product_id: l.product_id || null,
         description: l.description,
         quantity: String(num(l.quantity)),
         unit_price: String(num(l.unit_price)),
@@ -175,6 +178,7 @@ export default function InvoiceForm({ open, onClose, invoice, customers, onSaved
 
         <div style={{ marginTop: '1rem' }}>
           <div style={lineHeaderStyle}>
+            <span>Product</span>
             <span>Description</span>
             <span>Quantity</span>
             <span>Unit Price</span>
@@ -183,6 +187,11 @@ export default function InvoiceForm({ open, onClose, invoice, customers, onSaved
           </div>
           {form.lines.map((l) => (
             <div key={l.key} style={lineRowStyle}>
+              <ProductSelect
+                value={l.product_id}
+                onChange={(v) => handleLineChange(l.key, 'product_id', v)}
+                includeEmpty
+              />
               <input
                 style={{ padding: '0.4rem 0.6rem', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.85rem' }}
                 placeholder="Item description"

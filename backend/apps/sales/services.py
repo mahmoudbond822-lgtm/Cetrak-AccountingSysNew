@@ -6,6 +6,8 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from apps.accounting.models import Account, JournalEntry, JournalEntryLine
+from apps.inventory.models import Product, StockMovement
+from apps.inventory.services import StockService
 from apps.purchases.models import PurchaseInvoice, PurchaseSettings
 from apps.sales.models import (
     Customer,
@@ -106,6 +108,24 @@ class SalesInvoiceService:
             raise ValueError("Invoice total must be greater than zero.")
         return subtotal, tax, total
 
+    def _resolve_product(self, product_id):
+        if product_id is None:
+            return None
+        if isinstance(product_id, Product):
+            product = product_id
+        else:
+            try:
+                product = Product.objects.for_tenant(self.tenant_id).get(
+                    pk=product_id
+                )
+            except Product.DoesNotExist:
+                raise ValueError("Product not found.")
+        if product.tenant_id != self.tenant_id:
+            raise ValueError("Product not found.")
+        if not product.is_active:
+            raise ValueError("Cannot use an inactive product.")
+        return product
+
     def create_draft(self, *, number, customer_id, invoice_date, due_date,
                      discount, notes, lines_data):
         if not lines_data:
@@ -138,6 +158,7 @@ class SalesInvoiceService:
                     )
                     SalesInvoiceLine.objects.create(
                         invoice=invoice,
+                        product=self._resolve_product(line.get("product_id")),
                         description=line["description"],
                         quantity=line.get("quantity"),
                         unit_price=line.get("unit_price"),
@@ -211,6 +232,9 @@ class SalesInvoiceService:
                         )
                         SalesInvoiceLine.objects.create(
                             invoice=invoice,
+                            product=self._resolve_product(
+                                line.get("product_id")
+                            ),
                             description=line["description"],
                             quantity=line.get("quantity"),
                             unit_price=line.get("unit_price"),
@@ -249,6 +273,21 @@ class SalesInvoiceService:
             raise ValueError("Sales accounting settings are invalid.")
         reference = f"SALES-INV-{invoice.number}"
         vat_amount = invoice.tax
+        stock_lines = [
+            line
+            for line in invoice.lines.select_related("product").order_by("pk")
+            if line.product_id
+        ]
+        stock = None
+        cogs_account = None
+        inventory_account = None
+        if stock_lines:
+            stock = StockService(self.tenant_id)
+            inv_settings, warehouse, inv_accounts = stock.validate_settings(
+                "inventory_account", "cogs_account"
+            )
+            cogs_account = inv_accounts["cogs_account"]
+            inventory_account = inv_accounts["inventory_account"]
         try:
             with transaction.atomic():
                 entry = JournalEntry.objects.create(
@@ -281,6 +320,37 @@ class SalesInvoiceService:
                         credit=vat_amount,
                         description=f"VAT for invoice {invoice.number}",
                     )
+                if stock_lines:
+                    stock_lines.sort(key=lambda line: line.product_id)
+                    for line in stock_lines:
+                        balance = stock._get_balance(
+                            line.product_id, warehouse.id
+                        )
+                        consumed = stock.issue(
+                            balance,
+                            line.quantity,
+                            StockMovement.MovementType.ISSUE,
+                            sales_invoice=invoice,
+                        )
+                        JournalEntryLine.objects.create(
+                            entry=entry,
+                            account=cogs_account,
+                            debit=consumed,
+                            credit=0,
+                            description=(
+                                f"Cost of goods sold for invoice "
+                                f"{invoice.number}"
+                            ),
+                        )
+                        JournalEntryLine.objects.create(
+                            entry=entry,
+                            account=inventory_account,
+                            debit=0,
+                            credit=consumed,
+                            description=(
+                                f"Inventory for invoice {invoice.number}"
+                            ),
+                        )
                 invoice.posted_journal = entry
                 invoice.status = SalesInvoice.Status.POSTED
                 invoice.posted_at = timezone.now()

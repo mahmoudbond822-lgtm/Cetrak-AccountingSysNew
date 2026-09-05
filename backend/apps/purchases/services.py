@@ -5,6 +5,8 @@ from django.db import IntegrityError
 from django.utils import timezone
 
 from apps.accounting.models import Account, JournalEntry, JournalEntryLine
+from apps.inventory.models import Product, StockMovement
+from apps.inventory.services import StockService, _quantize
 from apps.purchases.models import (
     PurchaseInvoice,
     PurchaseInvoiceLine,
@@ -100,6 +102,24 @@ class PurchaseInvoiceService:
             raise ValueError("Invoice total must be greater than zero.")
         return subtotal, tax, total
 
+    def _resolve_product(self, product_id):
+        if product_id is None:
+            return None
+        if isinstance(product_id, Product):
+            product = product_id
+        else:
+            try:
+                product = Product.objects.for_tenant(self.tenant_id).get(
+                    pk=product_id
+                )
+            except Product.DoesNotExist:
+                raise ValueError("Product not found.")
+        if product.tenant_id != self.tenant_id:
+            raise ValueError("Product not found.")
+        if not product.is_active:
+            raise ValueError("Cannot use an inactive product.")
+        return product
+
     def create_draft(self, *, number, vendor_id, invoice_date, due_date,
                      discount, notes, lines_data):
         if not lines_data:
@@ -133,6 +153,7 @@ class PurchaseInvoiceService:
                     )
                     PurchaseInvoiceLine.objects.create(
                         invoice=invoice,
+                        product=self._resolve_product(line.get("product_id")),
                         description=line["description"],
                         quantity=line.get("quantity"),
                         unit_price=line.get("unit_price"),
@@ -206,6 +227,9 @@ class PurchaseInvoiceService:
                         )
                         PurchaseInvoiceLine.objects.create(
                             invoice=invoice,
+                            product=self._resolve_product(
+                                line.get("product_id")
+                            ),
                             description=line["description"],
                             quantity=line.get("quantity"),
                             unit_price=line.get("unit_price"),
@@ -257,6 +281,16 @@ class PurchaseInvoiceService:
                 raise ValueError("Purchase accounting settings are invalid.")
         reference = f"PUR-INV-{invoice.number}"
         vat_amount = invoice.tax
+        lines = list(invoice.lines.select_related("product").order_by("pk"))
+        stock_lines = [line for line in lines if line.product_id]
+        stock = None
+        inventory_account = None
+        if stock_lines:
+            stock = StockService(self.tenant_id)
+            inv_settings, warehouse, inv_accounts = stock.validate_settings(
+                "inventory_account"
+            )
+            inventory_account = inv_accounts["inventory_account"]
         try:
             with transaction.atomic():
                 entry = JournalEntry.objects.create(
@@ -267,15 +301,69 @@ class PurchaseInvoiceService:
                     posted=True,
                     posted_at=timezone.now(),
                 )
-                JournalEntryLine.objects.create(
-                    entry=entry,
-                    account=expense_account,
-                    debit=invoice.subtotal - invoice.discount,
-                    credit=0,
-                    description=(
-                        f"Expense for purchase invoice {invoice.number}"
-                    ),
+                inventory_value = Decimal("0")
+                if stock_lines:
+                    subtotal = invoice.subtotal
+                    discount = invoice.discount
+                    nets = {}
+                    for line in stock_lines:
+                        allocated = Decimal("0")
+                        if subtotal:
+                            allocated = _quantize(
+                                discount * Decimal(str(line.subtotal))
+                                / subtotal
+                            )
+                        nets[line.id] = _quantize(
+                            Decimal(str(line.subtotal)) - allocated
+                        )
+                    total_after_discount = subtotal - discount
+                    inventory_value = sum(nets.values(), Decimal("0"))
+                    if inventory_value > total_after_discount:
+                        surplus = inventory_value - total_after_discount
+                        inventory_value = total_after_discount
+                        last_id = list(nets.keys())[-1]
+                        nets[last_id] = nets[last_id] - surplus
+                    stock_lines.sort(key=lambda line: line.product_id)
+                    for line in stock_lines:
+                        net = nets[line.id]
+                        balance = stock._get_balance(
+                            line.product_id, warehouse.id
+                        )
+                        unit_cost = _quantize(
+                            net / Decimal(str(line.quantity))
+                        )
+                        stock.receive(
+                            balance,
+                            line.quantity,
+                            unit_cost,
+                            StockMovement.MovementType.RECEIPT,
+                            purchase_invoice=invoice,
+                            value=net,
+                        )
+                    if inventory_value > 0:
+                        JournalEntryLine.objects.create(
+                            entry=entry,
+                            account=inventory_account,
+                            debit=inventory_value,
+                            credit=0,
+                            description=(
+                                f"Inventory for purchase invoice "
+                                f"{invoice.number}"
+                            ),
+                        )
+                expense_value = (
+                    invoice.subtotal - invoice.discount - inventory_value
                 )
+                if expense_value > 0:
+                    JournalEntryLine.objects.create(
+                        entry=entry,
+                        account=expense_account,
+                        debit=expense_value,
+                        credit=0,
+                        description=(
+                            f"Expense for purchase invoice {invoice.number}"
+                        ),
+                    )
                 if vat_amount > 0:
                     JournalEntryLine.objects.create(
                         entry=entry,

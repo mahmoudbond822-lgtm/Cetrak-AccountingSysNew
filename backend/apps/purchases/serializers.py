@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from apps.accounting.serializers import TenantScopedAccountField
+from apps.inventory.serializers import TenantScopedProductField
 from apps.purchases import models
 from apps.sales.models import Payment
 from apps.sales.services import PaymentService
@@ -111,10 +112,25 @@ class PurchaseSettingsSerializer(serializers.ModelSerializer):
 
 
 class PurchaseInvoiceLineSerializer(serializers.ModelSerializer):
+    product_id = TenantScopedProductField(
+        queryset=None,
+        allow_null=True,
+        required=False,
+    )
+    product_sku = serializers.CharField(
+        source="product.sku", read_only=True, allow_null=True
+    )
+    product_name = serializers.CharField(
+        source="product.name", read_only=True, allow_null=True
+    )
+
     class Meta:
         model = models.PurchaseInvoiceLine
         fields = [
             "id",
+            "product_id",
+            "product_sku",
+            "product_name",
             "description",
             "quantity",
             "unit_price",

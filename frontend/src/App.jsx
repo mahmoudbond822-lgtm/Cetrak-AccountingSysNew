@@ -16,6 +16,10 @@ import VendorsPage from './pages/purchases/VendorsPage'
 import PurchaseInvoicesPage from './pages/purchases/PurchaseInvoicesPage'
 import PurchasePaymentsPage from './pages/purchases/PurchasePaymentsPage'
 import PurchasesSettingsPage from './pages/purchases/PurchasesSettingsPage'
+import ProductsPage from './pages/inventory/ProductsPage'
+import StockPage from './pages/inventory/StockPage'
+import AdjustmentsPage from './pages/inventory/AdjustmentsPage'
+import InventorySettingsPage from './pages/inventory/InventorySettingsPage'
 import ProtectedRoute from './components/Layout/ProtectedRoute'
 
 function App() {
@@ -133,6 +137,38 @@ function App() {
           element={
             <ProtectedRoute>
               <PurchasesSettingsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inventory/products"
+          element={
+            <ProtectedRoute>
+              <ProductsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inventory/stock"
+          element={
+            <ProtectedRoute>
+              <StockPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inventory/adjustments"
+          element={
+            <ProtectedRoute>
+              <AdjustmentsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/inventory/settings"
+          element={
+            <ProtectedRoute>
+              <InventorySettingsPage />
             </ProtectedRoute>
           }
         />

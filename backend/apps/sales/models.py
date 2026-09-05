@@ -89,6 +89,13 @@ class SalesInvoiceLine(BaseModel):
         on_delete=models.CASCADE,
         related_name="lines",
     )
+    product = models.ForeignKey(
+        "inventory.Product",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
     description = models.CharField(max_length=255)
     quantity = models.DecimalField(max_digits=19, decimal_places=4)
     unit_price = models.DecimalField(max_digits=19, decimal_places=4)

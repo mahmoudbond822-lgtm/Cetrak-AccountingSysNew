@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 Implementation plan: specs/012-inventory/plan.md
 
-Current phase: PLANNING — Feature 012 (Inventory Management) spec artifacts drafted (spec, plan, research, data-model, tasks, quickstart, contracts, checklist); awaiting review. NOT implemented. Do not push or deploy.
+Current phase: IMPLEMENTATION COMPLETE — Feature 012 (Inventory Management) implemented end to end (backend + 52-test inventory suite + frontend + docs); full suite 274 passed, 1 postgres-only skip, migrations clean. Do not push or deploy.
 
 ## What This Feature Does
 
@@ -9,14 +9,15 @@ Inventory Management — perpetual stock-keeping integrated directly with the Ac
 
 ## Generated Artifacts
 
-- `specs/012-inventory/spec.md` — Feature specification (draft)
-- `specs/012-inventory/plan.md` — Implementation plan (draft)
-- `specs/012-inventory/research.md` — Technical research, incl. the 20-question decision table (draft)
-- `specs/012-inventory/data-model.md` — Data model (draft)
-- `specs/012-inventory/contracts/inventory-api.md` — Inventory API contracts (draft)
-- `specs/012-inventory/quickstart.md` — Validation scenarios (draft, to verify at implementation)
+- `specs/012-inventory/spec.md` — Feature specification (implemented)
+- `specs/012-inventory/plan.md` — Implementation plan (implemented)
+- `specs/012-inventory/research.md` — Technical research, incl. the 20-question decision table (implemented)
+- `specs/012-inventory/data-model.md` — Data model (implemented)
+- `specs/012-inventory/contracts/inventory-api.md` — Inventory API contracts (implemented)
+- `specs/012-inventory/quickstart.md` — Validation scenarios (verified by `test_stock_ledger_tie.py`)
 - `specs/012-inventory/tasks.md` — Implementation tasks (all complete)
-- `specs/012-inventory/checklists/requirements.md` — Spec quality checklist (draft, to verify at close-out)
+- `specs/012-inventory/checklists/requirements.md` — Spec quality checklist (verified at close-out)
+- `specs/012-inventory/report.md` — Final implementation report
 
 ## Key Decisions (locked in the plan)
 
@@ -32,11 +33,11 @@ Inventory Management — perpetual stock-keeping integrated directly with the Ac
 
 ## Next Steps (after review)
 
-- Review the plan, then either adjust scope or proceed to implementation (Phases 1–7 in plan.md). Do not push or deploy; commit artifacts only via the auto-commit hook.
+- Review the plan, then either adjust scope or proceed to implementation (Phases 1–7 in plan.md). Do not push or deploy; commit artifacts only via the auto-commit hook. Implementation is complete and committed; awaiting review.
 
 ## Quick Reference
 
-- Backend tests: `cd backend && py -m pytest apps/ -q` (current baseline 223 passing; must stay green, then grows with the inventory suite; DJANGO_SETTINGS_MODULE=config.settings.test)
+- Backend tests: `cd backend && py -m pytest apps/ -q` (current baseline 223 passing + 52-test inventory suite → 274 passed, 1 postgres-only skip; DJANGO_SETTINGS_MODULE=config.settings.test)
 - Planned inventory URLs: `api/v1/inventory/products/`, `api/v1/inventory/warehouses/`, `api/v1/inventory/stock-balances/`, `api/v1/inventory/stock-movements/`, `api/v1/inventory/adjustments/` (+ `{id}/post_adjustment/`), `api/v1/inventory/settings/current/`
 - Existing sales/purchases URLs unchanged; invoice line payloads gain additive optional `product_id`
 - Frontend: `npm run build` and `npm run lint` in `frontend/` (16 pre-existing problems in earlier feature files; new files must stay clean)
