@@ -8,6 +8,9 @@ import AccountsPage from './pages/accounting/AccountsPage'
 import JournalPage from './pages/accounting/JournalPage'
 import LedgerPage from './pages/accounting/LedgerPage'
 import ReportsPage from './pages/accounting/ReportsPage'
+import CustomersPage from './pages/sales/CustomersPage'
+import InvoicesPage from './pages/sales/InvoicesPage'
+import SalesSettingsPage from './pages/sales/SalesSettingsPage'
 import ProtectedRoute from './components/Layout/ProtectedRoute'
 
 function App() {
@@ -61,6 +64,30 @@ function App() {
           element={
             <ProtectedRoute>
               <ReportsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/sales/customers"
+          element={
+            <ProtectedRoute>
+              <CustomersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/sales/invoices"
+          element={
+            <ProtectedRoute>
+              <InvoicesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/sales/settings"
+          element={
+            <ProtectedRoute>
+              <SalesSettingsPage />
             </ProtectedRoute>
           }
         />

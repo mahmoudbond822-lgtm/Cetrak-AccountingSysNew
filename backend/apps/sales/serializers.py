@@ -1,0 +1,209 @@
+from rest_framework import serializers
+
+from apps.accounting.serializers import TenantScopedAccountField
+from apps.sales import models
+
+
+class TenantScopedCustomerField(serializers.PrimaryKeyRelatedField):
+    def get_queryset(self):
+        request = self.context.get("request")
+        if request and hasattr(request, "tenant_id"):
+            return models.Customer.objects.for_tenant(request.tenant_id)
+        return models.Customer.objects.none()
+
+
+class CustomerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.Customer
+        fields = [
+            "id",
+            "code",
+            "name",
+            "email",
+            "phone",
+            "address",
+            "tax_id",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def validate_code(self, value):
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Customer code is required.")
+        return value
+
+    def validate_name(self, value):
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Customer name is required.")
+        return value
+
+
+class SalesSettingsSerializer(serializers.ModelSerializer):
+    accounts_receivable = TenantScopedAccountField(
+        queryset=None,
+        allow_null=True,
+        required=False,
+    )
+    sales_revenue = TenantScopedAccountField(
+        queryset=None,
+        allow_null=True,
+        required=False,
+    )
+    vat_payable = TenantScopedAccountField(
+        queryset=None,
+        allow_null=True,
+        required=False,
+    )
+    accounts_receivable_name = serializers.CharField(
+        source="accounts_receivable.name", read_only=True, allow_null=True
+    )
+    sales_revenue_name = serializers.CharField(
+        source="sales_revenue.name", read_only=True, allow_null=True
+    )
+    vat_payable_name = serializers.CharField(
+        source="vat_payable.name", read_only=True, allow_null=True
+    )
+
+    class Meta:
+        model = models.SalesSettings
+        fields = [
+            "id",
+            "accounts_receivable",
+            "accounts_receivable_name",
+            "sales_revenue",
+            "sales_revenue_name",
+            "vat_payable",
+            "vat_payable_name",
+        ]
+        read_only_fields = ["id"]
+
+    def validate(self, data):
+        for field in ("accounts_receivable", "sales_revenue", "vat_payable"):
+            account = data.get(field)
+            if account is None:
+                continue
+            expected_type = {
+                "accounts_receivable": "Asset",
+                "sales_revenue": "Revenue",
+                "vat_payable": "Liability",
+            }[field]
+            if account.type != expected_type:
+                raise serializers.ValidationError(
+                    {field: [f"Account must be of type {expected_type}."]}
+                )
+        return data
+
+
+class SalesInvoiceLineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.SalesInvoiceLine
+        fields = [
+            "id",
+            "description",
+            "quantity",
+            "unit_price",
+            "tax_rate",
+            "subtotal",
+            "tax",
+            "total",
+        ]
+        read_only_fields = ["id", "subtotal", "tax", "total"]
+
+    def validate_description(self, value):
+        value = (value or "").strip()
+        if not value:
+            raise serializers.ValidationError("Line description is required.")
+        return value
+
+    def validate_quantity(self, value):
+        if value <= 0:
+            raise serializers.ValidationError(
+                "Quantity must be greater than zero."
+            )
+        return value
+
+    def validate_unit_price(self, value):
+        if value < 0:
+            raise serializers.ValidationError(
+                "Unit price must not be negative."
+            )
+        return value
+
+    def validate_tax_rate(self, value):
+        if value < 0 or value > 100:
+            raise serializers.ValidationError(
+                "Tax rate must be between 0 and 100."
+            )
+        return value
+
+
+class SalesInvoiceSerializer(serializers.ModelSerializer):
+    customer_id = TenantScopedCustomerField(queryset=None)
+    customer_name = serializers.CharField(source="customer.name", read_only=True)
+    lines = SalesInvoiceLineSerializer(many=True)
+
+    class Meta:
+        model = models.SalesInvoice
+        fields = [
+            "id",
+            "number",
+            "customer_id",
+            "customer_name",
+            "invoice_date",
+            "due_date",
+            "status",
+            "discount",
+            "subtotal",
+            "tax",
+            "total",
+            "notes",
+            "posted_at",
+            "lines",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "status",
+            "subtotal",
+            "tax",
+            "total",
+            "posted_at",
+            "created_at",
+            "updated_at",
+        ]
+
+    def validate(self, data):
+        if "number" in data:
+            number = (data.get("number") or "").strip()
+            if not number:
+                raise serializers.ValidationError(
+                    {"number": ["Invoice number is required."]}
+                )
+        invoice_date = data.get("invoice_date")
+        due_date = data.get("due_date")
+        if invoice_date and due_date and due_date < invoice_date:
+            raise serializers.ValidationError(
+                {"due_date": ["Due date cannot be before the invoice date."]}
+            )
+        return data
+
+    def update(self, instance, validated_data):
+        lines_data = validated_data.pop("lines", None)
+        if "customer_id" in validated_data:
+            validated_data["customer_id"] = getattr(
+                validated_data["customer_id"], "pk", validated_data["customer_id"]
+            )
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        return instance
+
+
+class SalesInvoicePostSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.SalesInvoice
+        fields = ["id", "number", "status", "posted_at", "total"]
