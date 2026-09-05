@@ -1,31 +1,32 @@
 <!-- SPECKIT START -->
-Implementation plan: specs/009-sales-cycle/plan.md
+Implementation plan: specs/010-payments-receipts/plan.md
 
-Current phase: IMPLEMENTATION COMPLETE — Feature 009 (Sales Cycle Foundation) implemented and all tests passing.
+Current phase: PLANNING — Feature 010 (Payments & Receipts) spec artifacts drafted; awaiting approval before implementation.
 
 ## What This Feature Does
 
-Sales Cycle foundation — tenant-isolated Customers, Draft/Posted Sales Invoices with line-based decimal money math, and secure posting that generates a single balanced Journal Entry through an admin-configured (never hard-coded) per-tenant account mapping. Posting is idempotent and transactional; every invoice reference and account mapping is validated against the active tenant.
+Payments & Receipts — record customer payments against **posted** sales invoices. Posting a payment atomically books a single balanced Journal Entry (Dr the payment's cash/bank Asset account, Cr the tenant's configured `accounts_receivable` from Sales Settings), locks the invoice row to prevent overpayment races, and is idempotent (no double posting). Partial and multiple payments are supported with a derived outstanding balance (`total − Σ posted`); overpayment is always rejected. Draft payments are editable/deletable; posted payments are immutable (reversal deferred; manual reversing Journal Entry is the documented correction path).
 
 ## Generated Artifacts
 
-- `specs/009-sales-cycle/spec.md` — Feature specification
-- `specs/009-sales-cycle/plan.md` — Implementation plan
-- `specs/009-sales-cycle/research.md` — Technical research
-- `specs/009-sales-cycle/data-model.md` — Data model
-- `specs/009-sales-cycle/contracts/sales-api.md` — API contracts
-- `specs/009-sales-cycle/quickstart.md` — Validation scenarios
-- `specs/009-sales-cycle/tasks.md` — Implementation tasks
-- `specs/009-sales-cycle/checklists/requirements.md` — Spec quality checklist
+- `specs/010-payments-receipts/spec.md` — Feature specification
+- `specs/010-payments-receipts/plan.md` — Implementation plan
+- `specs/010-payments-receipts/research.md` — Technical research
+- `specs/010-payments-receipts/data-model.md` — Data model
+- `specs/010-payments-receipts/contracts/payments-api.md` — API contracts
+- `specs/010-payments-receipts/quickstart.md` — Validation scenarios
+- `specs/010-payments-receipts/tasks.md` — Implementation tasks
+- `specs/010-payments-receipts/checklists/requirements.md` — Spec quality checklist
 
 ## Next Steps
 - `/speckit.tasks` — Generate implementation tasks
-- `/speckit.implement` — Execute the implementation
+- `/speckit.implement` — Execute the implementation (after plan/tasks approval)
 
 ## Quick Reference
 - Backend tests: `cd backend && py -m pytest apps/accounts/tests/ apps/accounting/tests/ apps/sales/tests/ -v`
 - Test settings: DJANGO_SETTINGS_MODULE=config.settings.test
-- Sales URLs: `api/v1/sales/customers/`, `api/v1/sales/invoices/`, `api/v1/sales/invoices/{id}/post_invoice/`, `api/v1/sales/settings/current/`
+- Payment URLs (planned): `api/v1/sales/payments/`, `api/v1/sales/payments/{id}/`, `api/v1/sales/payments/{id}/post_payment/`
+- Sales URLs (existing): `api/v1/sales/customers/`, `api/v1/sales/invoices/`, `api/v1/sales/invoices/{id}/post_invoice/`, `api/v1/sales/settings/current/`
 - Frontend: `npm run build` and `npm run lint` in `frontend/` (lint has pre-existing failures in earlier feature files; new sales files are clean)
 - Docker Compose: `docker compose -f infra/docker-compose.yml up`
 <!-- SPECKIT END -->
