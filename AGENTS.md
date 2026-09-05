@@ -1,44 +1,44 @@
 <!-- SPECKIT START -->
-Implementation plan: specs/011-purchases-payables/plan.md
+Implementation plan: specs/012-inventory/plan.md
 
-Current phase: IMPLEMENTATION COMPLETE — Feature 011 (Purchases & Accounts Payable) fully implemented (backend + frontend + tests), regression green (223 backend tests), committed via auto-commit hook.
+Current phase: PLANNING — Feature 012 (Inventory Management) spec artifacts drafted (spec, plan, research, data-model, tasks, quickstart, contracts, checklist); awaiting review. NOT implemented. Do not push or deploy.
 
 ## What This Feature Does
 
-Purchases & Accounts Payable — record vendor purchases against an AP workflow that integrates directly with the Accounting system: Vendor → Purchase Invoice → Accounts Payable → Payment → Journal Entry. This is the purchasing-side equivalent of Features 009 + 010, following the existing architecture rather than duplicating it. Posting a purchase invoice atomically books a single balanced Journal Entry (Dr configured Expense, Dr configured Input VAT, Cr configured Accounts Payable) with reference `PUR-INV-{number}`; posting a vendor payment books the reverse AP cash entry (Dr Accounts Payable, Cr the payment's cash/bank Asset account) with reference `PAY-PUR-{invoice.number}-{payment.number}`. The Feature 010 `Payment` model/service is generalized with a `direction` field (`Receivable`/`Payable`, default Receivable) so receipts and vendor payments share one engine; the sales payments API is unchanged.
+Inventory Management — perpetual stock-keeping integrated directly with the Accounting system: **Purchase → Stock Receipt → Inventory → Sales → Stock Issue → COGS → Accounting**. A new `apps/inventory` app owns the tenant-scoped product catalog (`Product`), a single default `Warehouse` (lazily created per tenant), a maintained `StockBalance` (quantity, value, moving-average cost) backed by an immutable append-only `StockMovement` ledger, and `StockAdjustment` drafts that post balanced `ADJ-INV-{number}` journal entries. Product lines on purchase invoices post a stock receipt (Dr Inventory, Dr Input VAT, Cr AP — net after proportional discount, VAT excluded from cost); product lines on sales invoices post a stock issue plus **Dr COGS / Cr Inventory** at the moving weighted-average cost inside the existing balanced `SALES-INV-{number}` entry. Non-product (service) lines keep Features 009/011 behavior byte-for-byte via additive nullable `product` FKs. Negative stock is hard-rejected; posting is atomic, row-locked (`select_for_update` on `StockBalance` rows in a stable order), idempotent (unique `(tenant, reference)`), and tenant-isolated.
 
 ## Generated Artifacts
 
-- `specs/011-purchases-payables/spec.md` — Feature specification (draft)
-- `specs/011-purchases-payables/plan.md` — Implementation plan (draft)
-- `specs/011-purchases-payables/research.md` — Technical research (draft)
-- `specs/011-purchases-payables/data-model.md` — Data model (draft)
-- `specs/011-purchases-payables/contracts/purchases-api.md` — Purchases API contracts (draft)
-- `specs/011-purchases-payables/contracts/payments-api.md` — Generalized payment API contracts (draft)
-- `specs/011-purchases-payables/quickstart.md` — Validation scenarios (verified)
-- `specs/011-purchases-payables/tasks.md` — Implementation tasks (all complete)
-- `specs/011-purchases-payables/checklists/requirements.md` — Spec quality checklist (verified full)
-- `specs/011-purchases-payables/report.md` — Implementation report
+- `specs/012-inventory/spec.md` — Feature specification (draft)
+- `specs/012-inventory/plan.md` — Implementation plan (draft)
+- `specs/012-inventory/research.md` — Technical research, incl. the 20-question decision table (draft)
+- `specs/012-inventory/data-model.md` — Data model (draft)
+- `specs/012-inventory/contracts/inventory-api.md` — Inventory API contracts (draft)
+- `specs/012-inventory/quickstart.md` — Validation scenarios (draft, to verify at implementation)
+- `specs/012-inventory/tasks.md` — Implementation tasks (all complete)
+- `specs/012-inventory/checklists/requirements.md` — Spec quality checklist (draft, to verify at close-out)
 
 ## Key Decisions (locked in the plan)
 
-- New `apps/purchases` app (already registered in INSTALLED_APPS) with `Vendor`, `PurchaseInvoice`, `PurchaseInvoiceLine`, `PurchaseSettings`.
-- New `PurchaseSettings` mirror of `SalesSettings` (AP=Liability, Expense=Expense, Input VAT=Asset); SalesSettings untouched.
-- Generalize `Payment` (sales migration `0003`): `direction` (default Receivable), `invoice` nullable, additive `purchase_invoice` FK, exact-one-invoice check constraint.
-- Purchase invoice lifecycle Draft → Posted; cancelled/void deferred.
-- Posting requires AP+Expense accounts always and Input VAT when `tax > 0` (balanced JEs; deviates from sales' optional-VAT path — sales unchanged).
-- Payment JE for vendors is **Dr AP / Cr cash** (money out reduces both; the brief's illustrative directions were reversed — documented deviation).
+- New `apps/inventory` app (must be added to INSTALLED_APPS) with `Product`, `Warehouse`, `InventorySettings`, `StockBalance`, `StockMovement`, `StockAdjustment` (+ line).
+- Moving weighted average per `(product, warehouse)`; `value` is the authoritative aggregate, `moving_avg_cost = value / quantity` is a display snapshot; invariant `balance == Σ movements` asserted in tests.
+- One default `Warehouse` created lazily per tenant; multi-warehouse transfers deferred (schema already keyed on warehouse).
+- Additive nullable `product` FKs on `PurchaseInvoiceLine` (purchases migration `0002`) and `SalesInvoiceLine` (sales migration `0004`); no changes to `apps/accounting`, `SalesSettings`, or `PurchaseSettings`.
+- Purchase posting leg split: Dr Inventory (product-line nets after proportional discount) + Dr Expense (service-line nets) + Dr Input VAT + Cr AP — sums to `subtotal − discount + tax` = total.
+- Sales posting adds the self-balancing Dr COGS / Cr Inventory pair (qty × weighted-average cost) to the existing AR/Revenue/VAT entry.
+- Negative stock hard-rejected at posting (row-locked, atomic, zero artifacts on failure). Adjustments `Draft → Posted` with balanced `ADJ-INV-{number}` JE at current avg cost.
+- Permissions: `CanViewInventory` / `CanManageInventory` (products + adjustments incl. posting) / `CanConfigureInventory`; no separate `CanPost*` (stock effects ride the source document's permission — documented deviation).
+- Deferred (per brief): transfers, batch/lot/serial, expiry, returns/credit notes, manufacturing/BOM, forecasting, FIFO/standard costing, auto-numbering.
 
 ## Next Steps (after review)
 
-- None — the feature is complete. Review the report, then plan the next feature (AP aging / vendor statements, Feature 012 inventory/COGS, or ledger editing of posted entries).
+- Review the plan, then either adjust scope or proceed to implementation (Phases 1–7 in plan.md). Do not push or deploy; commit artifacts only via the auto-commit hook.
 
 ## Quick Reference
 
-- Backend tests: `cd backend && py -m pytest apps/ -q` (223 passing = 153 baseline + 70 purchases; DJANGO_SETTINGS_MODULE=config.settings.test)
-- Planned purchases URLs: `api/v1/purchases/vendors/`, `api/v1/purchases/invoices/` (+ `{id}/post_invoice/`), `api/v1/purchases/payments/` (+ `{id}/post_payment/`), `api/v1/purchases/settings/current/`
-- Existing sales URLs (unchanged): `api/v1/sales/customers/`, `api/v1/sales/invoices/`, `api/v1/sales/payments/`, `api/v1/sales/settings/current/`
-- Payment code being generalized: `backend/apps/sales/models.py` (`Payment`), `services.py` (`PaymentService`)
+- Backend tests: `cd backend && py -m pytest apps/ -q` (current baseline 223 passing; must stay green, then grows with the inventory suite; DJANGO_SETTINGS_MODULE=config.settings.test)
+- Planned inventory URLs: `api/v1/inventory/products/`, `api/v1/inventory/warehouses/`, `api/v1/inventory/stock-balances/`, `api/v1/inventory/stock-movements/`, `api/v1/inventory/adjustments/` (+ `{id}/post_adjustment/`), `api/v1/inventory/settings/current/`
+- Existing sales/purchases URLs unchanged; invoice line payloads gain additive optional `product_id`
 - Frontend: `npm run build` and `npm run lint` in `frontend/` (16 pre-existing problems in earlier feature files; new files must stay clean)
 - Docker Compose: `docker compose -f infra/docker-compose.yml up`
 <!-- SPECKIT END -->
