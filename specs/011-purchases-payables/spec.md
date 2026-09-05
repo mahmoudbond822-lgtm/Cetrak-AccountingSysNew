@@ -21,7 +21,7 @@ An accountant records a vendor (code, name, contact info, address, tax identifie
 **Acceptance Scenarios**:
 
 1. **Given** an Admin/Accountant role, **When** a vendor is created with a unique code, **Then** it is stored and returned with `is_active=true`, and a second vendor with the same tenant/code is rejected.
-2. **Given** a vendor with posted purchase invoices, **When** delete is attempted, **Then** the system deactivates it (204) and forbids hard deletion.
+2. **Given** a vendor with purchase invoices, **When** delete is attempted, **Then** the system rejects it (`400`, "Vendor has purchase invoices and cannot be deleted. Deactivate instead.") and forbids hard deletion; a vendor without invoices is deactivated (`204`, `is_active=false`). This mirrors the Feature 009 customer behavior.
 3. **Given** tenant B, **When** tenant A's vendor id is requested, **Then** `404` with a generic error (no disclosure).
 
 ---
@@ -114,7 +114,7 @@ The accountant sees a Purchases UI (Vendors, Purchase Invoices, Payments, Settin
 ### Functional Requirements
 
 - **FR-001**: A user with the purchases manage permission MUST be able to create, edit, and deactivate **Vendors**; a vendor MUST have `tenant`, `code` (unique per tenant), `name`, contact information, `address`, `tax_id`, `is_active`, and timestamps.
-- **FR-002**: A vendor with purchase invoices MUST NOT be hard-deleted; delete MUST deactivate instead (204), mirroring customers.
+- **FR-002**: A vendor with purchase invoices MUST NOT be hard-deleted; delete returns `400` with a message advising deactivation, and a vendor without invoices is deactivated (`204`) — mirroring customers.
 - **FR-003**: Users MUST be able to create **draft** and **posted** **Purchase Invoices** (adopting Draft → Posted semantics from sales).
 - **FR-004**: Invoice fields MUST include `number` (unique per tenant), `vendor`, `invoice_date`, `due_date`, `status`, `notes`, `discount`, `subtotal`, `tax`, `total`, `posted_at`, `posted_journal`, and derived `paid_amount`/`outstanding_balance`.
 - **FR-005**: Lines MUST support `description`, `quantity`, `unit_price`, `tax_rate`, with computed `subtotal`, `tax`, `total` in `Decimal(19,4)`; floating-point money is prohibited; math reuses the sales `compute_line_totals` recipe.
@@ -149,7 +149,7 @@ The accountant sees a Purchases UI (Vendors, Purchase Invoices, Payments, Settin
 
 ### Measurable Outcomes
 
-- **SC-001**: Vendor CRUD round-trip works; duplicate tenant/code rejected; vendor with invoices deactivates instead of deleting.
+- **SC-001**: Vendor CRUD round-trip works; duplicate tenant/code rejected; vendor with invoices rejects delete (`400`), vendor without invoices deactivates.
 - **SC-002**: A purchase invoice can be created, edited as a draft, and posted; posting produces exactly one balanced Journal Entry (`PUR-INV-{number}`) that respects the tenant's configured accounts.
 - **SC-003**: Outstanding AP always equals `total − Σ posted payable payments`; partial/full/multiple payment examples (20,000 → 7,000 → 13,000) pass; overpayment never reaches the ledger.
 - **SC-004**: Every payment posting (both directions) produces exactly one balanced Journal Entry and is idempotent; concurrency is handled by row-locking.

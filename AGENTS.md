@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 Implementation plan: specs/011-purchases-payables/plan.md
 
-Current phase: PLANNING — Feature 011 (Purchases & Accounts Payable) spec artifacts drafted and awaiting review. NO implementation has started. Relevant architecture surveyed and committed as part of the spec.
+Current phase: IMPLEMENTATION COMPLETE — Feature 011 (Purchases & Accounts Payable) fully implemented (backend + frontend + tests), regression green (223 backend tests), committed via auto-commit hook.
 
 ## What This Feature Does
 
@@ -15,9 +15,10 @@ Purchases & Accounts Payable — record vendor purchases against an AP workflow 
 - `specs/011-purchases-payables/data-model.md` — Data model (draft)
 - `specs/011-purchases-payables/contracts/purchases-api.md` — Purchases API contracts (draft)
 - `specs/011-purchases-payables/contracts/payments-api.md` — Generalized payment API contracts (draft)
-- `specs/011-purchases-payables/quickstart.md` — Validation scenarios (draft)
-- `specs/011-purchases-payables/tasks.md` — Implementation tasks (all pending)
-- `specs/011-purchases-payables/checklists/requirements.md` — Spec quality checklist (verification pending)
+- `specs/011-purchases-payables/quickstart.md` — Validation scenarios (verified)
+- `specs/011-purchases-payables/tasks.md` — Implementation tasks (all complete)
+- `specs/011-purchases-payables/checklists/requirements.md` — Spec quality checklist (verified full)
+- `specs/011-purchases-payables/report.md` — Implementation report
 
 ## Key Decisions (locked in the plan)
 
@@ -30,11 +31,11 @@ Purchases & Accounts Payable — record vendor purchases against an AP workflow 
 
 ## Next Steps (after review)
 
-- Approve the Feature 011 artifacts, then implement Plan phases 1–7 (models/migrations → Payment generalization → services → serializers/views/URLs → backend tests → frontend → docs/commit).
+- None — the feature is complete. Review the report, then plan the next feature (AP aging / vendor statements, Feature 012 inventory/COGS, or ledger editing of posted entries).
 
 ## Quick Reference
 
-- Backend tests: `cd backend && py -m pytest apps/ -q` (153 baseline passing; DJANGO_SETTINGS_MODULE=config.settings.test)
+- Backend tests: `cd backend && py -m pytest apps/ -q` (223 passing = 153 baseline + 70 purchases; DJANGO_SETTINGS_MODULE=config.settings.test)
 - Planned purchases URLs: `api/v1/purchases/vendors/`, `api/v1/purchases/invoices/` (+ `{id}/post_invoice/`), `api/v1/purchases/payments/` (+ `{id}/post_payment/`), `api/v1/purchases/settings/current/`
 - Existing sales URLs (unchanged): `api/v1/sales/customers/`, `api/v1/sales/invoices/`, `api/v1/sales/payments/`, `api/v1/sales/settings/current/`
 - Payment code being generalized: `backend/apps/sales/models.py` (`Payment`), `services.py` (`PaymentService`)

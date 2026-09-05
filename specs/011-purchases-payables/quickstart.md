@@ -16,11 +16,11 @@
 2. **Duplicate code** → same payload again → `400` `{"code": ["Vendor code already exists."]}`.
 3. **Edit** → `PATCH …/vendors/{id}/` `{phone: "+44 20 7946 0001"}` → `200`.
 4. **Cross-tenant** → as tenant B → `GET …/vendors/{tenantA_id}/` → `404` `{"detail": "Vendor not found."}`.
-5. **Delete with invoices** (after scenario below posts invoices) → `DELETE` → `204`; `GET` → list excludes it / `is_active=false`.
+5. **Delete with invoices** (after scenario below posts invoices) → `DELETE` → `400` `{"detail": "Vendor has purchase invoices and cannot be deleted. Deactivate instead."}`; delete a fresh vendor without invoices → `204`; `GET` → list excludes it / `is_active=false`.
 
 ### Purchase invoice + posting
 
-1. **Configure accounts**: create/post a Liability `3001 AP`, Expense `6001 Purchases`, Asset `1205 Input VAT` (API or fixture). `POST /api/v1/purchases/settings/current/` with their ids → `200`.
+1. **Configure accounts**: create a Liability `3001 AP`, Expense `6001 Purchases`, Asset `1205 Input VAT` (API or fixture). `PUT /api/v1/purchases/settings/current/` with their ids → `200`.
 2. **Create draft** → `POST /api/v1/purchases/invoices/`:
    ```json
    {"number": "PUR-2026-001", "vendor_id": "<V001>", "invoice_date": "2026-09-01",

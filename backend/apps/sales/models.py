@@ -117,10 +117,28 @@ class Payment(TenantScopedModel):
         CARD = "Card", "Card"
         CHECK = "Check", "Check"
 
+    class Direction(models.TextChoices):
+        RECEIVABLE = "Receivable", "Receivable"
+        PAYABLE = "Payable", "Payable"
+
     number = models.CharField(max_length=50)
+    direction = models.CharField(
+        max_length=20,
+        choices=Direction.choices,
+        default=Direction.RECEIVABLE,
+    )
     invoice = models.ForeignKey(
         SalesInvoice,
         on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="payments",
+    )
+    purchase_invoice = models.ForeignKey(
+        "purchases.PurchaseInvoice",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
         related_name="payments",
     )
     payment_date = models.DateField()
@@ -156,10 +174,20 @@ class Payment(TenantScopedModel):
                 fields=["tenant", "number"],
                 name="unique_payment_number_per_tenant",
             ),
+            models.CheckConstraint(
+                condition=(
+                    (models.Q(invoice__isnull=False)
+                     & models.Q(purchase_invoice__isnull=True))
+                    | (models.Q(invoice__isnull=True)
+                       & models.Q(purchase_invoice__isnull=False))
+                ),
+                name="check_payment_invoice_reference",
+            ),
         ]
         indexes = [
             models.Index(fields=["tenant", "status"]),
             models.Index(fields=["invoice"]),
+            models.Index(fields=["purchase_invoice"]),
         ]
         ordering = ["-created_at"]
 

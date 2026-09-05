@@ -12,6 +12,10 @@ import CustomersPage from './pages/sales/CustomersPage'
 import InvoicesPage from './pages/sales/InvoicesPage'
 import PaymentsPage from './pages/sales/PaymentsPage'
 import SalesSettingsPage from './pages/sales/SalesSettingsPage'
+import VendorsPage from './pages/purchases/VendorsPage'
+import PurchaseInvoicesPage from './pages/purchases/PurchaseInvoicesPage'
+import PurchasePaymentsPage from './pages/purchases/PurchasePaymentsPage'
+import PurchasesSettingsPage from './pages/purchases/PurchasesSettingsPage'
 import ProtectedRoute from './components/Layout/ProtectedRoute'
 
 function App() {
@@ -97,6 +101,38 @@ function App() {
           element={
             <ProtectedRoute>
               <SalesSettingsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/purchases/vendors"
+          element={
+            <ProtectedRoute>
+              <VendorsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/purchases/invoices"
+          element={
+            <ProtectedRoute>
+              <PurchaseInvoicesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/purchases/payments"
+          element={
+            <ProtectedRoute>
+              <PurchasePaymentsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/purchases/settings"
+          element={
+            <ProtectedRoute>
+              <PurchasesSettingsPage />
             </ProtectedRoute>
           }
         />

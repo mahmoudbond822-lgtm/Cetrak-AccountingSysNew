@@ -6,6 +6,7 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from apps.accounting.models import Account, JournalEntry, JournalEntryLine
+from apps.purchases.models import PurchaseInvoice, PurchaseSettings
 from apps.sales.models import (
     Customer,
     Payment,
@@ -313,6 +314,14 @@ class PaymentService:
         except SalesInvoice.DoesNotExist:
             raise ValueError("Invoice not found.")
 
+    def _get_purchase_invoice(self, purchase_invoice_id):
+        try:
+            return PurchaseInvoice.objects.for_tenant(self.tenant_id).get(
+                pk=purchase_invoice_id
+            )
+        except PurchaseInvoice.DoesNotExist:
+            raise ValueError("Invoice not found.")
+
     def _get_cash_account(self, account):
         if not isinstance(account, Account):
             account = (
@@ -340,15 +349,46 @@ class PaymentService:
     def invoice_outstanding(self, invoice):
         return max(invoice.total - self.invoice_paid_amount(invoice), Decimal("0"))
 
-    def create_draft(self, *, number, invoice_id, payment_date, amount,
-                     method, cash_account, reference=None, notes=None):
+    def purchase_paid_amount(self, purchase_invoice):
+        paid = (
+            Payment.objects.for_tenant(self.tenant_id)
+            .filter(
+                purchase_invoice=purchase_invoice,
+                direction=Payment.Direction.PAYABLE,
+                status=Payment.Status.POSTED,
+            )
+            .aggregate(total=Sum("amount"))["total"]
+            or Decimal("0")
+        )
+        return Decimal(paid)
+
+    def purchase_outstanding(self, purchase_invoice):
+        return max(
+            purchase_invoice.total
+            - self.purchase_paid_amount(purchase_invoice),
+            Decimal("0"),
+        )
+
+    def create_draft(self, *, number, payment_date, amount=None, method,
+                     cash_account, reference=None, notes=None,
+                     direction=Payment.Direction.RECEIVABLE,
+                     invoice_id=None, purchase_invoice_id=None):
+        if direction == Payment.Direction.PAYABLE:
+            invoice = self._get_purchase_invoice(purchase_invoice_id)
+            if invoice.status != PurchaseInvoice.Status.POSTED:
+                raise ValueError("Only posted purchase invoices can be paid.")
+            outstanding = self.purchase_outstanding(invoice)
+        else:
+            invoice = self._get_invoice(invoice_id)
+            if invoice.status != SalesInvoice.Status.POSTED:
+                raise ValueError("Only posted invoices can receive payments.")
+            outstanding = self.invoice_outstanding(invoice)
+        if amount is None:
+            amount = outstanding
         amount = Decimal(str(amount))
         if amount <= 0:
             raise ValueError("Amount must be greater than zero.")
-        invoice = self._get_invoice(invoice_id)
-        if invoice.status != SalesInvoice.Status.POSTED:
-            raise ValueError("Only posted invoices can receive payments.")
-        if amount > self.invoice_outstanding(invoice):
+        if amount > outstanding:
             raise ValueError("Amount exceeds the outstanding balance.")
         account = self._get_cash_account(cash_account)
         try:
@@ -356,7 +396,13 @@ class PaymentService:
                 payment = Payment.objects.create(
                     tenant_id=self.tenant_id,
                     number=number,
-                    invoice=invoice,
+                    direction=direction,
+                    invoice=(
+                        invoice if direction == Payment.Direction.RECEIVABLE else None
+                    ),
+                    purchase_invoice=(
+                        invoice if direction == Payment.Direction.PAYABLE else None
+                    ),
                     payment_date=payment_date,
                     amount=amount,
                     method=method,
@@ -370,18 +416,26 @@ class PaymentService:
         return payment
 
     def update_draft(self, payment_id, *, number=None, invoice_id=None,
-                     payment_date=None, amount=None, method=None,
-                     cash_account=None, reference=_UNSET, notes=_UNSET):
+                     purchase_invoice_id=None, payment_date=None, amount=None,
+                     method=None, cash_account=None, reference=_UNSET,
+                     notes=_UNSET):
         payment = self._get_payment(payment_id)
         if payment.status != Payment.Status.DRAFT:
             raise ValueError("Only draft payments can be edited.")
         if number is not None:
             payment.number = number
-        if invoice_id is not None:
-            invoice = self._get_invoice(invoice_id)
-            if invoice.status != SalesInvoice.Status.POSTED:
-                raise ValueError("Only posted invoices can receive payments.")
-            payment.invoice = invoice
+        if payment.direction == Payment.Direction.RECEIVABLE:
+            if invoice_id is not None:
+                invoice = self._get_invoice(invoice_id)
+                if invoice.status != SalesInvoice.Status.POSTED:
+                    raise ValueError("Only posted invoices can receive payments.")
+                payment.invoice = invoice
+        else:
+            if purchase_invoice_id is not None:
+                invoice = self._get_purchase_invoice(purchase_invoice_id)
+                if invoice.status != PurchaseInvoice.Status.POSTED:
+                    raise ValueError("Only posted purchase invoices can be paid.")
+                payment.purchase_invoice = invoice
         if payment_date is not None:
             payment.payment_date = payment_date
         if amount is not None:
@@ -397,7 +451,11 @@ class PaymentService:
         final_amount = Decimal(str(payment.amount))
         if final_amount <= 0:
             raise ValueError("Amount must be greater than zero.")
-        if final_amount > self.invoice_outstanding(payment.invoice):
+        if payment.direction == Payment.Direction.RECEIVABLE:
+            outstanding = self.invoice_outstanding(payment.invoice)
+        else:
+            outstanding = self.purchase_outstanding(payment.purchase_invoice)
+        if final_amount > outstanding:
             raise ValueError("Amount exceeds the outstanding balance.")
         try:
             with transaction.atomic():
@@ -416,6 +474,11 @@ class PaymentService:
         payment = self._get_payment(payment_id)
         if payment.status != Payment.Status.DRAFT:
             raise ValueError("Payment is already posted.")
+        if payment.direction == Payment.Direction.PAYABLE:
+            return self._post_payable(payment)
+        return self._post_receivable(payment)
+
+    def _post_receivable(self, payment):
         settings = SalesSettings.objects.for_tenant(self.tenant_id).first()
         if settings is None or not settings.accounts_receivable_id:
             raise ValueError("Sales accounting settings are not configured.")
@@ -462,6 +525,73 @@ class PaymentService:
                     debit=0,
                     credit=amount,
                     description=f"Accounts receivable for invoice {invoice.number}",
+                )
+                payment.journal_entry = entry
+                payment.status = Payment.Status.POSTED
+                payment.posted_at = timezone.now()
+                payment.save(update_fields=[
+                    "journal_entry", "status", "posted_at", "updated_at",
+                ])
+        except IntegrityError:
+            raise ValueError("Journal entry reference already exists.")
+        return payment
+
+    def _post_payable(self, payment):
+        settings = PurchaseSettings.objects.for_tenant(self.tenant_id).first()
+        if settings is None or not settings.accounts_payable_id:
+            raise ValueError("Purchase accounting settings are not configured.")
+        ap_account = settings.accounts_payable
+        if (
+            ap_account.tenant_id != self.tenant_id
+            or not ap_account.is_active
+            or ap_account.type != "Liability"
+        ):
+            raise ValueError("Purchase accounting settings are not configured.")
+        try:
+            with transaction.atomic():
+                invoice = (
+                    PurchaseInvoice.objects.for_tenant(self.tenant_id)
+                    .select_for_update()
+                    .get(pk=payment.purchase_invoice_id)
+                )
+                if invoice.status != PurchaseInvoice.Status.POSTED:
+                    raise ValueError("Invoice is not posted.")
+                amount = Decimal(str(payment.amount))
+                if amount <= 0:
+                    raise ValueError("Amount must be greater than zero.")
+                if amount > self.purchase_outstanding(invoice):
+                    raise ValueError("Amount exceeds the outstanding balance.")
+                reference = (
+                    f"PAY-PUR-{invoice.number}-{payment.number}"
+                )
+                entry = JournalEntry.objects.create(
+                    tenant_id=self.tenant_id,
+                    date=payment.payment_date,
+                    description=(
+                        f"Payment {payment.number} for purchase invoice "
+                        f"{invoice.number}"
+                    ),
+                    reference=reference,
+                    posted=True,
+                    posted_at=timezone.now(),
+                )
+                JournalEntryLine.objects.create(
+                    entry=entry,
+                    account=ap_account,
+                    debit=amount,
+                    credit=0,
+                    description=(
+                        f"Accounts payable for purchase invoice {invoice.number}"
+                    ),
+                )
+                JournalEntryLine.objects.create(
+                    entry=entry,
+                    account=payment.cash_account,
+                    debit=0,
+                    credit=amount,
+                    description=(
+                        f"Cash paid for purchase invoice {invoice.number}"
+                    ),
                 )
                 payment.journal_entry = entry
                 payment.status = Payment.Status.POSTED
