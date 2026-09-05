@@ -2,10 +2,17 @@ from decimal import Decimal
 
 from django.db import transaction
 from django.db import IntegrityError
+from django.db.models import Sum
 from django.utils import timezone
 
 from apps.accounting.models import Account, JournalEntry, JournalEntryLine
-from apps.sales.models import Customer, SalesInvoice, SalesInvoiceLine, SalesSettings
+from apps.sales.models import (
+    Customer,
+    Payment,
+    SalesInvoice,
+    SalesInvoiceLine,
+    SalesSettings,
+)
 
 _UNSET = object()
 
@@ -288,3 +295,180 @@ class SalesInvoiceService:
         if invoice.status != SalesInvoice.Status.DRAFT:
             raise ValueError("Only draft invoices can be deleted.")
         invoice.delete()
+
+
+class PaymentService:
+    def __init__(self, tenant_id):
+        self.tenant_id = tenant_id
+
+    def _get_payment(self, payment_id):
+        try:
+            return Payment.objects.for_tenant(self.tenant_id).get(pk=payment_id)
+        except Payment.DoesNotExist:
+            raise ValueError("Payment not found.")
+
+    def _get_invoice(self, invoice_id):
+        try:
+            return SalesInvoice.objects.for_tenant(self.tenant_id).get(pk=invoice_id)
+        except SalesInvoice.DoesNotExist:
+            raise ValueError("Invoice not found.")
+
+    def _get_cash_account(self, account):
+        if not isinstance(account, Account):
+            account = (
+                Account.objects.for_tenant(self.tenant_id).filter(pk=account).first()
+            )
+        if account is None:
+            raise ValueError("Cash account not found.")
+        if account.tenant_id != self.tenant_id:
+            raise ValueError("Cash account is invalid.")
+        if not account.is_active:
+            raise ValueError("Cash account is invalid.")
+        if account.type != "Asset":
+            raise ValueError("Cash account must be of type Asset.")
+        return account
+
+    def invoice_paid_amount(self, invoice):
+        paid = (
+            Payment.objects.for_tenant(self.tenant_id)
+            .filter(invoice=invoice, status=Payment.Status.POSTED)
+            .aggregate(total=Sum("amount"))["total"]
+            or Decimal("0")
+        )
+        return Decimal(paid)
+
+    def invoice_outstanding(self, invoice):
+        return max(invoice.total - self.invoice_paid_amount(invoice), Decimal("0"))
+
+    def create_draft(self, *, number, invoice_id, payment_date, amount,
+                     method, cash_account, reference=None, notes=None):
+        amount = Decimal(str(amount))
+        if amount <= 0:
+            raise ValueError("Amount must be greater than zero.")
+        invoice = self._get_invoice(invoice_id)
+        if invoice.status != SalesInvoice.Status.POSTED:
+            raise ValueError("Only posted invoices can receive payments.")
+        if amount > self.invoice_outstanding(invoice):
+            raise ValueError("Amount exceeds the outstanding balance.")
+        account = self._get_cash_account(cash_account)
+        try:
+            with transaction.atomic():
+                payment = Payment.objects.create(
+                    tenant_id=self.tenant_id,
+                    number=number,
+                    invoice=invoice,
+                    payment_date=payment_date,
+                    amount=amount,
+                    method=method,
+                    cash_account=account,
+                    reference=reference or None,
+                    notes=notes or None,
+                    status=Payment.Status.DRAFT,
+                )
+        except IntegrityError:
+            raise ValueError("Payment number already exists.")
+        return payment
+
+    def update_draft(self, payment_id, *, number=None, invoice_id=None,
+                     payment_date=None, amount=None, method=None,
+                     cash_account=None, reference=_UNSET, notes=_UNSET):
+        payment = self._get_payment(payment_id)
+        if payment.status != Payment.Status.DRAFT:
+            raise ValueError("Only draft payments can be edited.")
+        if number is not None:
+            payment.number = number
+        if invoice_id is not None:
+            invoice = self._get_invoice(invoice_id)
+            if invoice.status != SalesInvoice.Status.POSTED:
+                raise ValueError("Only posted invoices can receive payments.")
+            payment.invoice = invoice
+        if payment_date is not None:
+            payment.payment_date = payment_date
+        if amount is not None:
+            payment.amount = amount
+        if method is not None:
+            payment.method = method
+        if cash_account is not None:
+            payment.cash_account = self._get_cash_account(cash_account)
+        if reference is not _UNSET:
+            payment.reference = reference or None
+        if notes is not _UNSET:
+            payment.notes = notes or None
+        final_amount = Decimal(str(payment.amount))
+        if final_amount <= 0:
+            raise ValueError("Amount must be greater than zero.")
+        if final_amount > self.invoice_outstanding(payment.invoice):
+            raise ValueError("Amount exceeds the outstanding balance.")
+        try:
+            with transaction.atomic():
+                payment.save()
+        except IntegrityError:
+            raise ValueError("Payment number already exists.")
+        return payment
+
+    def delete_draft(self, payment_id):
+        payment = self._get_payment(payment_id)
+        if payment.status != Payment.Status.DRAFT:
+            raise ValueError("Only draft payments can be deleted.")
+        payment.delete()
+
+    def post_payment(self, payment_id):
+        payment = self._get_payment(payment_id)
+        if payment.status != Payment.Status.DRAFT:
+            raise ValueError("Payment is already posted.")
+        settings = SalesSettings.objects.for_tenant(self.tenant_id).first()
+        if settings is None or not settings.accounts_receivable_id:
+            raise ValueError("Sales accounting settings are not configured.")
+        ar_account = settings.accounts_receivable
+        if (
+            ar_account.tenant_id != self.tenant_id
+            or not ar_account.is_active
+            or ar_account.type != "Asset"
+        ):
+            raise ValueError("Sales accounting settings are not configured.")
+        try:
+            with transaction.atomic():
+                invoice = (
+                    SalesInvoice.objects.for_tenant(self.tenant_id)
+                    .select_for_update()
+                    .get(pk=payment.invoice_id)
+                )
+                if invoice.status != SalesInvoice.Status.POSTED:
+                    raise ValueError("Invoice is not posted.")
+                amount = Decimal(str(payment.amount))
+                if amount <= 0:
+                    raise ValueError("Amount must be greater than zero.")
+                if amount > self.invoice_outstanding(invoice):
+                    raise ValueError("Amount exceeds the outstanding balance.")
+                reference = f"PAY-INV-{invoice.number}-{payment.number}"
+                entry = JournalEntry.objects.create(
+                    tenant_id=self.tenant_id,
+                    date=payment.payment_date,
+                    description=f"Payment {payment.number} for invoice {invoice.number}",
+                    reference=reference,
+                    posted=True,
+                    posted_at=timezone.now(),
+                )
+                JournalEntryLine.objects.create(
+                    entry=entry,
+                    account=payment.cash_account,
+                    debit=amount,
+                    credit=0,
+                    description=f"Cash received for invoice {invoice.number}",
+                )
+                JournalEntryLine.objects.create(
+                    entry=entry,
+                    account=ar_account,
+                    debit=0,
+                    credit=amount,
+                    description=f"Accounts receivable for invoice {invoice.number}",
+                )
+                payment.journal_entry = entry
+                payment.status = Payment.Status.POSTED
+                payment.posted_at = timezone.now()
+                payment.save(update_fields=[
+                    "journal_entry", "status", "posted_at", "updated_at",
+                ])
+        except IntegrityError:
+            raise ValueError("Journal entry reference already exists.")
+        return payment

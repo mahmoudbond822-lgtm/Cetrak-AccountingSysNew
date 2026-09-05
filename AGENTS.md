@@ -1,7 +1,7 @@
 <!-- SPECKIT START -->
 Implementation plan: specs/010-payments-receipts/plan.md
 
-Current phase: PLANNING — Feature 010 (Payments & Receipts) spec artifacts drafted; awaiting approval before implementation.
+Current phase: IMPLEMENTATION COMPLETE — Feature 010 (Payments & Receipts) shipped. Backend 153 tests passing, frontend builds, new files lint-clean. See `specs/010-payments-receipts/report.md`.
 
 ## What This Feature Does
 
@@ -15,18 +15,18 @@ Payments & Receipts — record customer payments against **posted** sales invoic
 - `specs/010-payments-receipts/data-model.md` — Data model
 - `specs/010-payments-receipts/contracts/payments-api.md` — API contracts
 - `specs/010-payments-receipts/quickstart.md` — Validation scenarios
-- `specs/010-payments-receipts/tasks.md` — Implementation tasks
-- `specs/010-payments-receipts/checklists/requirements.md` — Spec quality checklist
+- `specs/010-payments-receipts/tasks.md` — Implementation tasks (all complete)
+- `specs/010-payments-receipts/report.md` — Final implementation report
+- `specs/010-payments-receipts/checklists/requirements.md` — Spec quality checklist (all verified)
 
 ## Next Steps
-- `/speckit.tasks` — Generate implementation tasks
-- `/speckit.implement` — Execute the implementation (after plan/tasks approval)
+- Backend tests all green (153); frontend build passes. Suggested follow-ups: customer statements/AR aging, ledger entry correction/reversal, payments receipt PDF, auto-sequenced payment numbers.
 
 ## Quick Reference
-- Backend tests: `cd backend && py -m pytest apps/accounts/tests/ apps/accounting/tests/ apps/sales/tests/ -v`
-- Test settings: DJANGO_SETTINGS_MODULE=config.settings.test
-- Payment URLs (planned): `api/v1/sales/payments/`, `api/v1/sales/payments/{id}/`, `api/v1/sales/payments/{id}/post_payment/`
+- Backend tests: `cd backend && py -m pytest apps/ -q` (153 passing; DJANGO_SETTINGS_MODULE=config.settings.test)
+- Payments URLs (live): `api/v1/sales/payments/`, `api/v1/sales/payments/{id}/`, `api/v1/sales/payments/{id}/post_payment/`
 - Sales URLs (existing): `api/v1/sales/customers/`, `api/v1/sales/invoices/`, `api/v1/sales/invoices/{id}/post_invoice/`, `api/v1/sales/settings/current/`
-- Frontend: `npm run build` and `npm run lint` in `frontend/` (lint has pre-existing failures in earlier feature files; new sales files are clean)
+- Payment code: `backend/apps/sales/models.py` (`Payment`), `services.py` (`PaymentService`), `serializers.py`, `views.py`, `tests/test_payments_api.py`; frontend `frontend/src/pages/sales/PaymentsPage.jsx`, `components/sales/payments/PaymentForm.jsx`
+- Frontend: `npm run build` and `npm run lint` in `frontend/` (16 pre-existing problems in earlier feature files; new payment files are clean)
 - Docker Compose: `docker compose -f infra/docker-compose.yml up`
 <!-- SPECKIT END -->

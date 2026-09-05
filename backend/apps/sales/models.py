@@ -106,6 +106,67 @@ class SalesInvoiceLine(BaseModel):
         return f"{self.description} x {self.quantity}"
 
 
+class Payment(TenantScopedModel):
+    class Status(models.TextChoices):
+        DRAFT = "Draft", "Draft"
+        POSTED = "Posted", "Posted"
+
+    class Method(models.TextChoices):
+        CASH = "Cash", "Cash"
+        BANK_TRANSFER = "Bank Transfer", "Bank Transfer"
+        CARD = "Card", "Card"
+        CHECK = "Check", "Check"
+
+    number = models.CharField(max_length=50)
+    invoice = models.ForeignKey(
+        SalesInvoice,
+        on_delete=models.PROTECT,
+        related_name="payments",
+    )
+    payment_date = models.DateField()
+    amount = models.DecimalField(max_digits=19, decimal_places=4)
+    method = models.CharField(max_length=20, choices=Method.choices)
+    cash_account = models.ForeignKey(
+        "accounting.Account",
+        on_delete=models.PROTECT,
+        related_name="+",
+    )
+    reference = models.CharField(max_length=255, null=True, blank=True)
+    notes = models.TextField(null=True, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.DRAFT,
+    )
+    journal_entry = models.OneToOneField(
+        "accounting.JournalEntry",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="payment",
+    )
+    posted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "sales_payment"
+        verbose_name = "Payment"
+        verbose_name_plural = "Payments"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "number"],
+                name="unique_payment_number_per_tenant",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["tenant", "status"]),
+            models.Index(fields=["invoice"]),
+        ]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.number} ({self.status})"
+
+
 class SalesSettings(TenantScopedModel):
     accounts_receivable = models.ForeignKey(
         "accounting.Account",

@@ -36,6 +36,9 @@ export default function SalesNav() {
       <NavLink to="/sales/invoices" style={({ isActive }) => isActive ? activeStyle : linkStyle}>
         Invoices
       </NavLink>
+      <NavLink to="/sales/payments" style={({ isActive }) => isActive ? activeStyle : linkStyle}>
+        Payments
+      </NavLink>
       {isAdmin && (
         <NavLink to="/sales/settings" style={({ isActive }) => isActive ? activeStyle : linkStyle}>
           Settings

@@ -13,6 +13,13 @@ export const salesService = {
   deleteInvoice: (id) => api.delete(`/sales/invoices/${id}/`),
   postInvoice: (id) => api.post(`/sales/invoices/${id}/post_invoice/`),
 
+  getPayments: (params) => api.get('/sales/payments/', { params }),
+  getPayment: (id) => api.get(`/sales/payments/${id}/`),
+  createPayment: (data) => api.post('/sales/payments/', data),
+  updatePayment: (id, data) => api.patch(`/sales/payments/${id}/`, data),
+  deletePayment: (id) => api.delete(`/sales/payments/${id}/`),
+  postPayment: (id) => api.post(`/sales/payments/${id}/post_payment/`),
+
   getSettings: () => api.get('/sales/settings/current/'),
   updateSettings: (data) => api.put('/sales/settings/current/', data),
 }

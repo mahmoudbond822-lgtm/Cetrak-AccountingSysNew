@@ -2,6 +2,7 @@ from rest_framework import serializers
 
 from apps.accounting.serializers import TenantScopedAccountField
 from apps.sales import models
+from apps.sales.services import PaymentService
 
 
 class TenantScopedCustomerField(serializers.PrimaryKeyRelatedField):
@@ -10,6 +11,16 @@ class TenantScopedCustomerField(serializers.PrimaryKeyRelatedField):
         if request and hasattr(request, "tenant_id"):
             return models.Customer.objects.for_tenant(request.tenant_id)
         return models.Customer.objects.none()
+
+
+class TenantScopedPostedInvoiceField(serializers.PrimaryKeyRelatedField):
+    def get_queryset(self):
+        request = self.context.get("request")
+        if request and hasattr(request, "tenant_id"):
+            return models.SalesInvoice.objects.for_tenant(request.tenant_id).filter(
+                status=models.SalesInvoice.Status.POSTED
+            )
+        return models.SalesInvoice.objects.none()
 
 
 class CustomerSerializer(serializers.ModelSerializer):
@@ -145,6 +156,8 @@ class SalesInvoiceSerializer(serializers.ModelSerializer):
     customer_id = TenantScopedCustomerField(queryset=None)
     customer_name = serializers.CharField(source="customer.name", read_only=True)
     lines = SalesInvoiceLineSerializer(many=True)
+    paid_amount = serializers.SerializerMethodField()
+    outstanding_balance = serializers.SerializerMethodField()
 
     class Meta:
         model = models.SalesInvoice
@@ -161,6 +174,8 @@ class SalesInvoiceSerializer(serializers.ModelSerializer):
             "tax",
             "total",
             "notes",
+            "paid_amount",
+            "outstanding_balance",
             "posted_at",
             "lines",
             "created_at",
@@ -172,10 +187,20 @@ class SalesInvoiceSerializer(serializers.ModelSerializer):
             "subtotal",
             "tax",
             "total",
+            "paid_amount",
+            "outstanding_balance",
             "posted_at",
             "created_at",
             "updated_at",
         ]
+
+    def get_paid_amount(self, obj):
+        service = PaymentService(obj.tenant_id)
+        return "{:.4f}".format(service.invoice_paid_amount(obj))
+
+    def get_outstanding_balance(self, obj):
+        service = PaymentService(obj.tenant_id)
+        return "{:.4f}".format(service.invoice_outstanding(obj))
 
     def validate(self, data):
         if "number" in data:
@@ -207,3 +232,80 @@ class SalesInvoicePostSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.SalesInvoice
         fields = ["id", "number", "status", "posted_at", "total"]
+
+
+class PaymentSerializer(serializers.ModelSerializer):
+    invoice_id = TenantScopedPostedInvoiceField(queryset=None)
+    invoice = serializers.SerializerMethodField()
+    customer_name = serializers.CharField(source="invoice.customer.name", read_only=True)
+    cash_account = TenantScopedAccountField(queryset=None)
+    cash_account_name = serializers.CharField(source="cash_account.name", read_only=True)
+    journal_entry_id = serializers.UUIDField(
+        source="journal_entry.id", read_only=True, allow_null=True
+    )
+
+    class Meta:
+        model = models.Payment
+        fields = [
+            "id",
+            "number",
+            "invoice_id",
+            "invoice",
+            "customer_name",
+            "payment_date",
+            "amount",
+            "method",
+            "cash_account",
+            "cash_account_name",
+            "reference",
+            "notes",
+            "status",
+            "journal_entry_id",
+            "posted_at",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "invoice",
+            "customer_name",
+            "cash_account_name",
+            "status",
+            "journal_entry_id",
+            "posted_at",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_invoice(self, obj):
+        invoice = obj.invoice
+        service = PaymentService(obj.tenant_id)
+        return {
+            "id": str(invoice.id),
+            "number": invoice.number,
+            "customer": {
+                "id": str(invoice.customer.id),
+                "code": invoice.customer.code,
+                "name": invoice.customer.name,
+            },
+            "total": "{:.4f}".format(invoice.total),
+            "paid_amount": "{:.4f}".format(service.invoice_paid_amount(invoice)),
+            "outstanding_balance": "{:.4f}".format(service.invoice_outstanding(invoice)),
+        }
+
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Amount must be greater than zero.")
+        return value
+
+    def validate(self, data):
+        invoice = data.get("invoice_id")
+        amount = data.get("amount")
+        if invoice is not None and amount is not None:
+            request = self.context.get("request")
+            outstanding = PaymentService(request.tenant_id).invoice_outstanding(invoice)
+            if amount > outstanding:
+                raise serializers.ValidationError(
+                    {"amount": ["Amount exceeds the outstanding balance."]}
+                )
+        return data
