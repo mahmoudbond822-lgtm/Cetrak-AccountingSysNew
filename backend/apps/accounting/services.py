@@ -1,7 +1,16 @@
-from django.db import connection
-from django.db.models import Sum, Q
+from decimal import Decimal
+
+from django.db.models import Sum
 
 from apps.accounting.models import Account, JournalEntry, JournalEntryLine
+
+
+def _as_decimal(value):
+    if value is None:
+        return Decimal("0")
+    if isinstance(value, Decimal):
+        return value
+    return Decimal(str(value))
 
 
 class AccountingService:
@@ -100,9 +109,9 @@ class JournalEntryService:
         if entry.posted:
             raise ValueError("Journal entry is already posted.")
         lines = entry.lines.all()
-        total_debit = sum(float(l.debit) for l in lines)
-        total_credit = sum(float(l.credit) for l in lines)
-        if abs(total_debit - total_credit) > 0.001:
+        total_debit = sum((line.debit for line in lines), Decimal("0"))
+        total_credit = sum((line.credit for line in lines), Decimal("0"))
+        if total_debit != total_credit:
             raise ValueError("Cannot post an imbalanced journal entry.")
         if not lines.exists():
             raise ValueError("Cannot post a journal entry with no lines.")
@@ -120,6 +129,7 @@ class LedgerService:
             account_id=account_id,
             account__tenant_id=self.tenant_id,
             entry__tenant_id=self.tenant_id,
+            entry__posted=True,
         ).select_related("entry").order_by("entry__date", "entry__created_at")
 
         if date_from:
@@ -128,9 +138,13 @@ class LedgerService:
             lines = lines.filter(entry__date__lte=date_to)
 
         entries = []
-        running_balance = 0
+        running_balance = Decimal("0")
+        total_debit = Decimal("0")
+        total_credit = Decimal("0")
         for line in lines:
-            running_balance += float(line.debit) - float(line.credit)
+            running_balance += line.debit - line.credit
+            total_debit += line.debit
+            total_credit += line.credit
             entries.append({
                 "date": line.entry.date,
                 "description": line.entry.description,
@@ -140,8 +154,6 @@ class LedgerService:
                 "running_balance": f"{running_balance:.4f}",
             })
 
-        total_debit = sum(float(e["debit"]) for e in entries)
-        total_credit = sum(float(e["credit"]) for e in entries)
         closing_balance = total_debit - total_credit
 
         return {
@@ -168,6 +180,7 @@ class ReportService:
             account__type__in=account_types,
             account__tenant_id=self.tenant_id,
             entry__tenant_id=self.tenant_id,
+            entry__posted=True,
         )
         if date_from:
             qs = qs.filter(entry__date__gte=date_from)
@@ -186,11 +199,11 @@ class ReportService:
             date_from, date_to,
         )
         report_rows = []
-        total_debit = 0
-        total_credit = 0
+        total_debit = Decimal("0")
+        total_credit = Decimal("0")
         for row in rows:
-            d = float(row["total_debit"] or 0)
-            c = float(row["total_credit"] or 0)
+            d = _as_decimal(row["total_debit"])
+            c = _as_decimal(row["total_credit"])
             total_debit += d
             total_credit += c
             report_rows.append({
@@ -216,9 +229,9 @@ class ReportService:
         exp_rows = self._line_aggregation(["Expense"], date_from, date_to)
 
         revenues = []
-        total_revenue = 0
+        total_revenue = Decimal("0")
         for row in rev_rows:
-            bal = float(row["total_credit"] or 0) - float(row["total_debit"] or 0)
+            bal = _as_decimal(row["total_credit"]) - _as_decimal(row["total_debit"])
             total_revenue += bal
             revenues.append({
                 "account_id": str(row["account_id"]),
@@ -227,9 +240,9 @@ class ReportService:
             })
 
         expenses = []
-        total_expenses = 0
+        total_expenses = Decimal("0")
         for row in exp_rows:
-            bal = float(row["total_debit"] or 0) - float(row["total_credit"] or 0)
+            bal = _as_decimal(row["total_debit"]) - _as_decimal(row["total_credit"])
             total_expenses += bal
             expenses.append({
                 "account_id": str(row["account_id"]),
@@ -269,13 +282,14 @@ class ReportService:
 
         def build_section(rows, normal_balance):
             section = []
-            total = 0
+            total = Decimal("0")
             for row in rows:
+                debit = _as_decimal(row["total_debit"])
+                credit = _as_decimal(row["total_credit"])
                 if normal_balance == "debit":
-                    bal = float(row["total_debit"] or 0) - float(row["total_credit"] or 0)
+                    bal = debit - credit
                 else:
-                    bal = float(row["total_credit"] or 0) - float(row["total_debit"] or 0)
-                bal = max(bal, 0)
+                    bal = credit - debit
                 total += bal
                 section.append({
                     "account_id": str(row["account_id"]),
@@ -288,10 +302,22 @@ class ReportService:
         liabilities, total_liabilities = build_section(liability_rows, "credit")
         equity, total_equity = build_section(equity_rows, "credit")
 
-        total_revenue = sum(float(r["total_credit"] or 0) - float(r["total_debit"] or 0) for r in revenue_rows)
-        total_expense = sum(float(r["total_debit"] or 0) - float(r["total_credit"] or 0) for r in expense_rows)
-        net_income = max(total_revenue - total_expense, 0)
-        if net_income > 0:
+        total_revenue = sum(
+            (
+                _as_decimal(r["total_credit"]) - _as_decimal(r["total_debit"])
+                for r in revenue_rows
+            ),
+            Decimal("0"),
+        )
+        total_expense = sum(
+            (
+                _as_decimal(r["total_debit"]) - _as_decimal(r["total_credit"])
+                for r in expense_rows
+            ),
+            Decimal("0"),
+        )
+        net_income = total_revenue - total_expense
+        if net_income != 0:
             equity.append({
                 "account_id": "retained-earnings",
                 "account_name": "Retained Earnings (Current Period)",

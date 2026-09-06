@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from rest_framework import serializers
 
 from apps.accounting import models
@@ -115,13 +117,23 @@ class JournalEntrySerializer(serializers.ModelSerializer):
             "date",
             "description",
             "reference",
+            "posted",
+            "posted_at",
             "line_count",
             "total_debit",
             "total_credit",
             "lines",
             "created_at",
         ]
-        read_only_fields = ["id", "created_at", "line_count", "total_debit", "total_credit"]
+        read_only_fields = [
+            "id",
+            "created_at",
+            "line_count",
+            "total_debit",
+            "total_credit",
+            "posted",
+            "posted_at",
+        ]
 
     def get_line_count(self, obj):
         return obj.lines.count()
@@ -132,9 +144,15 @@ class JournalEntrySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "A journal entry must have at least 2 lines."
             )
-        total_debit = sum(float(line.get("debit", 0)) for line in lines)
-        total_credit = sum(float(line.get("credit", 0)) for line in lines)
-        if abs(total_debit - total_credit) > 0.001:
+        total_debit = sum(
+            (Decimal(str(line.get("debit", 0))) for line in lines),
+            Decimal("0"),
+        )
+        total_credit = sum(
+            (Decimal(str(line.get("credit", 0))) for line in lines),
+            Decimal("0"),
+        )
+        if total_debit != total_credit:
             raise serializers.ValidationError(
                 f"Journal entry is not balanced. Total debits ({total_debit:.4f}) "
                 f"do not equal total credits ({total_credit:.4f})."

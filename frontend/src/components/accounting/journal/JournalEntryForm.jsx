@@ -37,6 +37,8 @@ export default function JournalEntryForm({ onSaved, onCancel }) {
   const [reference, setReference] = useState('')
   const [lines, setLines] = useState([createEmptyLine(), createEmptyLine()])
   const [saving, setSaving] = useState(false)
+  const [posting, setPosting] = useState(false)
+  const [createdDraft, setCreatedDraft] = useState(null)
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
 
@@ -63,7 +65,7 @@ export default function JournalEntryForm({ onSaved, onCancel }) {
     setLines((prev) => prev.filter((_, i) => i !== index))
   }
 
-  async function handleSubmit() {
+  async function handleSaveDraft() {
     setSaving(true)
     setError('')
     setFieldErrors({})
@@ -78,8 +80,8 @@ export default function JournalEntryForm({ onSaved, onCancel }) {
       })),
     }
     try {
-      await accountingService.createJournalEntry(payload)
-      onSaved()
+      const { data } = await accountingService.createJournalEntry(payload)
+      setCreatedDraft(data)
     } catch (err) {
       const data = err.response?.data
       if (typeof data === 'object') {
@@ -91,6 +93,18 @@ export default function JournalEntryForm({ onSaved, onCancel }) {
       }
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handlePostDraft() {
+    setPosting(true)
+    setError('')
+    try {
+      await accountingService.postJournalEntry(createdDraft.id)
+      onSaved()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to post journal entry.')
+      setPosting(false)
     }
   }
 
@@ -117,16 +131,31 @@ export default function JournalEntryForm({ onSaved, onCancel }) {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-        <div style={fieldStyle}>
-          <label style={labelStyle}>Date *</label>
-          <input style={inputStyle} type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+      {createdDraft ? (
+        <div style={{
+          padding: '1rem', background: '#F0FFF0', border: '1px solid #4CAF50',
+          borderRadius: '8px', marginBottom: '1rem', fontSize: '0.875rem',
+        }}>
+          <div style={{ fontWeight: 500, marginBottom: '0.375rem' }}>
+            Draft saved ({createdDraft.reference})
+          </div>
+          <div style={{ color: 'var(--text)' }}>
+            This entry is not yet financially effective. Post it to include it
+            in the ledger and financial reports.
+          </div>
         </div>
-        <div style={fieldStyle}>
-          <label style={labelStyle}>Reference *</label>
-          <input style={inputStyle} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="JE-2026-001" required />
-        </div>
-      </div>
+      ) : (
+        <>
+          <div style={fieldStyle}>
+            <label style={labelStyle}>Date *</label>
+            <input style={inputStyle} type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+          </div>
+          <div style={fieldStyle}>
+            <label style={labelStyle}>Reference *</label>
+            <input style={inputStyle} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="JE-2026-001" required />
+          </div>
+        </>
+      )}
 
       <div style={fieldStyle}>
         <label style={labelStyle}>Description *</label>
@@ -147,7 +176,7 @@ export default function JournalEntryForm({ onSaved, onCancel }) {
 
       <div style={{ marginBottom: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>Journal Lines</span>
-        <button type="button" style={btnSecondary} onClick={handleAddLine}>+ Add Line</button>
+        <button type="button" style={btnSecondary} onClick={handleAddLine} disabled={Boolean(createdDraft)}>+ Add Line</button>
       </div>
 
       <div style={{ marginBottom: '1rem' }}>
@@ -158,7 +187,7 @@ export default function JournalEntryForm({ onSaved, onCancel }) {
             index={i}
             onChange={handleLineChange}
             onRemove={handleRemoveLine}
-            disabled={saving}
+            disabled={saving || Boolean(createdDraft)}
           />
         ))}
       </div>
@@ -170,15 +199,33 @@ export default function JournalEntryForm({ onSaved, onCancel }) {
       )}
 
       <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-        <button type="button" style={btnSecondary} onClick={onCancel}>Cancel</button>
-        <button
-          type="button"
-          style={canSubmit ? btnPrimary : btnDisabled}
-          disabled={!canSubmit}
-          onClick={handleSubmit}
-        >
-          {saving ? 'Posting...' : 'Post Entry'}
-        </button>
+        {createdDraft ? (
+          <>
+            <button type="button" style={btnSecondary} onClick={onCancel}>
+              Done
+            </button>
+            <button
+              type="button"
+              style={posting ? btnDisabled : btnPrimary}
+              disabled={posting}
+              onClick={handlePostDraft}
+            >
+              {posting ? 'Posting...' : 'Post Entry'}
+            </button>
+          </>
+        ) : (
+          <>
+            <button type="button" style={btnSecondary} onClick={onCancel}>Cancel</button>
+            <button
+              type="button"
+              style={canSubmit ? btnPrimary : btnDisabled}
+              disabled={!canSubmit}
+              onClick={handleSaveDraft}
+            >
+              {saving ? 'Saving...' : 'Save Draft'}
+            </button>
+          </>
+        )}
       </div>
     </div>
   )

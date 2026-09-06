@@ -26,6 +26,21 @@ const skeletonStyle = {
   height: '40px', background: '#f0f0f0', borderRadius: '6px',
   marginBottom: '0.5rem',
 }
+const badgePosted = {
+  padding: '0.2rem 0.5rem', borderRadius: '10px', fontSize: '0.7rem',
+  background: '#E8F5E9', color: '#2E7D32', border: '1px solid #A5D6A7',
+  marginLeft: '1rem', whiteSpace: 'nowrap',
+}
+const badgeDraft = {
+  padding: '0.2rem 0.5rem', borderRadius: '10px', fontSize: '0.7rem',
+  background: '#FFF8E1', color: '#F57F17', border: '1px solid #FFE082',
+  marginLeft: '1rem', whiteSpace: 'nowrap',
+}
+const btnPost = {
+  cursor: 'pointer', background: 'transparent', color: 'var(--accent)',
+  border: '1px solid var(--accent)', borderRadius: '6px', padding: '0.25rem 0.75rem',
+  fontSize: '0.8rem', marginLeft: '1rem', whiteSpace: 'nowrap',
+}
 
 export default function JournalPage() {
   const navigate = useNavigate()
@@ -57,6 +72,16 @@ export default function JournalPage() {
   function handleSaved() {
     setShowForm(false)
     fetchEntries()
+  }
+
+  async function handlePostEntry(entry) {
+    setError('')
+    try {
+      await accountingService.postJournalEntry(entry.id)
+      fetchEntries()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Failed to post journal entry.')
+    }
   }
 
   if (showForm) {
@@ -123,6 +148,14 @@ export default function JournalPage() {
                 <div style={{ marginLeft: '1rem', fontSize: '0.75rem', color: 'var(--text)' }}>
                   {entry.line_count} lines
                 </div>
+                {entry.posted
+                  ? <span style={badgePosted}>Posted</span>
+                  : <span style={badgeDraft}>Draft</span>}
+                {!entry.posted && (
+                  <button style={btnPost} onClick={() => handlePostEntry(entry)}>
+                    Post
+                  </button>
+                )}
               </div>
             ))}
           </div>

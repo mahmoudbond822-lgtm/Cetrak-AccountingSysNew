@@ -649,7 +649,7 @@ class LedgerAndBalanceTests(BaseSetup):
         h = self.admin_h()
         cash, rev, exp, eq, liab = self._seed_data(h)
 
-        self.client.post(
+        invest = self.client.post(
             reverse("journalentry-list"),
             {
                 "date": "2026-01-01",
@@ -662,8 +662,9 @@ class LedgerAndBalanceTests(BaseSetup):
             },
             format="json",
             **h,
-        )
-        self.client.post(
+        ).data
+        self.client.post(reverse("journalentry-post", args=[invest["id"]]), **h)
+        sale = self.client.post(
             reverse("journalentry-list"),
             {
                 "date": "2026-01-15",
@@ -676,8 +677,9 @@ class LedgerAndBalanceTests(BaseSetup):
             },
             format="json",
             **h,
-        )
-        self.client.post(
+        ).data
+        self.client.post(reverse("journalentry-post", args=[sale["id"]]), **h)
+        rent = self.client.post(
             reverse("journalentry-list"),
             {
                 "date": "2026-01-20",
@@ -690,7 +692,8 @@ class LedgerAndBalanceTests(BaseSetup):
             },
             format="json",
             **h,
-        )
+        ).data
+        self.client.post(reverse("journalentry-post", args=[rent["id"]]), **h)
 
         ledger = self.client.get(
             reverse("ledger-list") + f"?account_id={cash['id']}", **h
@@ -706,7 +709,7 @@ class LedgerAndBalanceTests(BaseSetup):
     def test_ledger_date_filter(self):
         h = self.admin_h()
         cash, rev, exp, eq, liab = self._seed_data(h)
-        self.client.post(
+        invest = self.client.post(
             reverse("journalentry-list"),
             {
                 "date": "2026-01-01",
@@ -719,8 +722,9 @@ class LedgerAndBalanceTests(BaseSetup):
             },
             format="json",
             **h,
-        )
-        self.client.post(
+        ).data
+        self.client.post(reverse("journalentry-post", args=[invest["id"]]), **h)
+        sale = self.client.post(
             reverse("journalentry-list"),
             {
                 "date": "2026-02-01",
@@ -733,7 +737,8 @@ class LedgerAndBalanceTests(BaseSetup):
             },
             format="json",
             **h,
-        )
+        ).data
+        self.client.post(reverse("journalentry-post", args=[sale["id"]]), **h)
         ledger = self.client.get(
             reverse("ledger-list")
             + f"?account_id={cash['id']}&date_from=2026-02-01&date_to=2026-02-28",
@@ -749,7 +754,7 @@ class LedgerAndBalanceTests(BaseSetup):
     def test_trial_balance(self):
         h = self.admin_h()
         cash, rev, exp, eq, liab = self._seed_data(h)
-        self.client.post(
+        invest = self.client.post(
             reverse("journalentry-list"),
             {
                 "date": "2026-01-01",
@@ -762,8 +767,9 @@ class LedgerAndBalanceTests(BaseSetup):
             },
             format="json",
             **h,
-        )
-        self.client.post(
+        ).data
+        self.client.post(reverse("journalentry-post", args=[invest["id"]]), **h)
+        sale = self.client.post(
             reverse("journalentry-list"),
             {
                 "date": "2026-01-15",
@@ -776,7 +782,8 @@ class LedgerAndBalanceTests(BaseSetup):
             },
             format="json",
             **h,
-        )
+        ).data
+        self.client.post(reverse("journalentry-post", args=[sale["id"]]), **h)
         resp = self.client.get(reverse("report-trial-balance"), **h)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(resp.data["report_type"], "trial-balance")
@@ -786,7 +793,7 @@ class LedgerAndBalanceTests(BaseSetup):
     def test_trial_balance_date_filter(self):
         h = self.admin_h()
         cash, rev, exp, eq, liab = self._seed_data(h)
-        self.client.post(
+        invest = self.client.post(
             reverse("journalentry-list"),
             {
                 "date": "2026-01-01",
@@ -799,8 +806,9 @@ class LedgerAndBalanceTests(BaseSetup):
             },
             format="json",
             **h,
-        )
-        self.client.post(
+        ).data
+        self.client.post(reverse("journalentry-post", args=[invest["id"]]), **h)
+        sale = self.client.post(
             reverse("journalentry-list"),
             {
                 "date": "2026-02-01",
@@ -813,7 +821,8 @@ class LedgerAndBalanceTests(BaseSetup):
             },
             format="json",
             **h,
-        )
+        ).data
+        self.client.post(reverse("journalentry-post", args=[sale["id"]]), **h)
         resp = self.client.get(
             reverse("report-trial-balance")
             + "?date_from=2026-02-01&date_to=2026-02-28",
@@ -825,7 +834,7 @@ class LedgerAndBalanceTests(BaseSetup):
     def test_income_statement(self):
         h = self.admin_h()
         cash, rev, exp, eq, liab = self._seed_data(h)
-        self.client.post(
+        sale = self.client.post(
             reverse("journalentry-list"),
             {
                 "date": "2026-01-15",
@@ -838,8 +847,9 @@ class LedgerAndBalanceTests(BaseSetup):
             },
             format="json",
             **h,
-        )
-        self.client.post(
+        ).data
+        self.client.post(reverse("journalentry-post", args=[sale["id"]]), **h)
+        rent = self.client.post(
             reverse("journalentry-list"),
             {
                 "date": "2026-01-20",
@@ -852,7 +862,8 @@ class LedgerAndBalanceTests(BaseSetup):
             },
             format="json",
             **h,
-        )
+        ).data
+        self.client.post(reverse("journalentry-post", args=[rent["id"]]), **h)
         resp = self.client.get(reverse("report-income-statement"), **h)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(resp.data["report_type"], "income-statement")
@@ -863,7 +874,7 @@ class LedgerAndBalanceTests(BaseSetup):
     def test_balance_sheet(self):
         h = self.admin_h()
         cash, rev, exp, eq, liab = self._seed_data(h)
-        self.client.post(
+        invest = self.client.post(
             reverse("journalentry-list"),
             {
                 "date": "2026-01-01",
@@ -876,8 +887,9 @@ class LedgerAndBalanceTests(BaseSetup):
             },
             format="json",
             **h,
-        )
-        self.client.post(
+        ).data
+        self.client.post(reverse("journalentry-post", args=[invest["id"]]), **h)
+        loan = self.client.post(
             reverse("journalentry-list"),
             {
                 "date": "2026-01-10",
@@ -890,8 +902,9 @@ class LedgerAndBalanceTests(BaseSetup):
             },
             format="json",
             **h,
-        )
-        self.client.post(
+        ).data
+        self.client.post(reverse("journalentry-post", args=[loan["id"]]), **h)
+        sale = self.client.post(
             reverse("journalentry-list"),
             {
                 "date": "2026-01-15",
@@ -904,7 +917,8 @@ class LedgerAndBalanceTests(BaseSetup):
             },
             format="json",
             **h,
-        )
+        ).data
+        self.client.post(reverse("journalentry-post", args=[sale["id"]]), **h)
         resp = self.client.get(reverse("report-balance-sheet"), **h)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         self.assertEqual(resp.data["report_type"], "balance-sheet")
