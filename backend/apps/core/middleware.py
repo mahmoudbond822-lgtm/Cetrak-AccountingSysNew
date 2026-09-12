@@ -80,3 +80,16 @@ class TenantResolutionMiddleware(MiddlewareMixin):
     def process_response(self, request, response):
         clear_request_context()
         return response
+
+
+class SecurityHeadersMiddleware(MiddlewareMixin):
+    def process_response(self, request, response):
+        from django.conf import settings
+
+        csp = getattr(settings, "CONTENT_SECURITY_POLICY", None)
+        if csp and "Content-Security-Policy" not in response:
+            response["Content-Security-Policy"] = csp
+        response.setdefault("X-Content-Type-Options", "nosniff")
+        response.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        return response

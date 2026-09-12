@@ -1,14 +1,18 @@
 import { useNavigate } from 'react-router-dom'
-import api, { getAuth, clearAuth } from '../services/api'
+import api, { getAuth, clearAuth, csrfToken } from '../services/api'
 import TenantSwitcher from '../components/Layout/TenantSwitcher'
 
 export default function DashboardPage() {
   const navigate = useNavigate()
-  const { activeTenantName, refreshToken } = getAuth()
+  const { activeTenantName } = getAuth()
 
   async function handleLogout() {
     try {
-      await api.post('/auth/logout/', { refresh: refreshToken })
+      const csrf = csrfToken()
+      const config = csrf
+        ? { withCredentials: true, headers: { 'X-CSRFToken': csrf } }
+        : { withCredentials: true }
+      await api.post('/auth/logout/', {}, config)
     } catch {
       // proceed even if server call fails
     }

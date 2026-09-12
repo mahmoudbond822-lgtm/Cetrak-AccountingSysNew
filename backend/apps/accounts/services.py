@@ -11,6 +11,10 @@ from apps.core.audit import AuditService
 from apps.accounts.models import User, Membership, BlacklistedToken, Invitation
 
 
+def _email_key(email):
+    return str(email or "").strip().lower()
+
+
 class AuthService:
     @transaction.atomic
     def register(self, email, password, company_name):
@@ -137,6 +141,7 @@ class InvitationService:
 
     @transaction.atomic
     def create_invitation(self, email, role, tenant_id):
+        email = _email_key(email)
         if Invitation.objects.for_tenant(tenant_id).filter(
             email=email, accepted_at__isnull=True
         ).exists():
@@ -177,6 +182,11 @@ class InvitationService:
         invitation, error = self.validate_token(token)
         if error:
             return None, error
+        if _email_key(user.email) != _email_key(invitation.email):
+            return None, (
+                "This invitation is bound to a different email address. "
+                "Register with the email address it was sent to."
+            )
         membership, _ = Membership.objects.get_or_create(
             user=user,
             tenant=invitation.tenant,
@@ -272,3 +282,47 @@ class TeamService:
             target=membership,
             before=before,
         )
+
+    @transaction.atomic
+    def set_user_status(self, tenant_id, member_user_id, new_status, requesting_user_id):
+        if new_status not in (User.Status.ACTIVE, User.Status.DISABLED):
+            raise ValueError("Invalid status. Use Active or Disabled.")
+        membership = (
+            Membership.objects.for_tenant(tenant_id)
+            .select_related("user")
+            .select_for_update()
+            .filter(user_id=member_user_id)
+            .first()
+        )
+        if membership is None:
+            raise Membership.DoesNotExist("Member not found.")
+
+        target = membership.user
+        if new_status == User.Status.DISABLED and target.status != User.Status.DISABLED:
+            admin_count = Membership.objects.for_tenant(tenant_id).filter(
+                role=Membership.Role.ADMIN
+            ).exclude(user_id=member_user_id).select_for_update().count()
+            if admin_count == 0:
+                raise ValueError(
+                    "Cannot disable the last admin. Assign another admin first."
+                )
+
+        if target.status == new_status:
+            return membership
+
+        before = {"user_id": str(target.id), "email": target.email, "status": target.status}
+        target.status = new_status
+        target.save(update_fields=["status"])
+        action = (
+            "member.disable"
+            if new_status == User.Status.DISABLED
+            else "member.enable"
+        )
+        AuditService.record(
+            action=action,
+            tenant_id=tenant_id,
+            target=target,
+            before=before,
+            after={"user_id": str(target.id), "email": target.email, "status": new_status},
+        )
+        return membership

@@ -22,18 +22,11 @@ class LoginSerializer(serializers.Serializer):
     remember_me = serializers.BooleanField(default=False, required=False)
 
 
-class TokenRefreshSerializer(serializers.Serializer):
-    refresh = serializers.CharField()
-
-
-class LogoutSerializer(serializers.Serializer):
-    refresh = serializers.CharField()
-
-
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["id", "email", "display_name", "status"]
+        read_only_fields = ["status"]
 
 
 class InvitationSerializer(serializers.ModelSerializer):
@@ -67,3 +60,7 @@ class MemberSerializer(serializers.Serializer):
 
 class RoleChangeSerializer(serializers.Serializer):
     role = serializers.ChoiceField(choices=Membership.Role.choices)
+
+
+class MemberStatusSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=[User.Status.ACTIVE, User.Status.DISABLED])

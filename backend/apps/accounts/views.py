@@ -1,5 +1,7 @@
 import datetime as dt_mod
 
+from django.conf import settings
+from django.middleware.csrf import get_token
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -9,14 +11,60 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from apps.accounts.serializers import (
     RegisterSerializer,
     LoginSerializer,
-    TokenRefreshSerializer,
     UserSerializer,
+    InvitationSerializer,
+    InvitationCreateSerializer,
+    MemberSerializer,
+    RoleChangeSerializer,
+    MemberStatusSerializer,
 )
-from apps.accounts.serializers import LogoutSerializer, InvitationSerializer, InvitationCreateSerializer, MemberSerializer, RoleChangeSerializer
 from apps.accounts.services import AuthService, InvitationService, TeamService
 from apps.accounts.models import BlacklistedToken, Membership, User
 from apps.accounts.permissions import IsAdminUser
+from apps.accounts.cookies import (
+    csrf_invalid,
+    set_csrf_cookie,
+    set_refresh_cookie,
+    delete_refresh_cookie,
+)
+from apps.accounts.services import _email_key
 from apps.core.models import Tenant
+from apps.core.audit import AuditService
+
+
+def _mint_refresh(user_id, tenant_id=None, remember_me=False):
+    lifetime = (
+        settings.SIMPLE_JWT.get("REFRESH_TOKEN_LIFETIME_REMEMBER_ME", dt_mod.timedelta(days=30))
+        if remember_me
+        else settings.SIMPLE_JWT.get("REFRESH_TOKEN_LIFETIME", dt_mod.timedelta(days=7))
+    )
+    refresh = RefreshToken()
+    refresh.set_exp(lifetime=lifetime)
+    refresh["user_id"] = str(user_id)
+    if tenant_id:
+        refresh["tenant_id"] = str(tenant_id)
+    return refresh
+
+
+def _remember_me_from_token(token):
+    issued_at = token.get("iat")
+    expires_at = token.get("exp")
+    if not issued_at or not expires_at:
+        return False
+    lifetime = expires_at - issued_at
+    return lifetime > 14 * 24 * 3600
+
+
+def _blacklist(refresh):
+    jti = refresh.get("jti")
+    exp = refresh.get("exp")
+    if jti and exp:
+        BlacklistedToken.objects.get_or_create(
+            jti=jti,
+            defaults={
+                "expires_at": dt_mod.datetime.fromtimestamp(exp, tz=dt_mod.timezone.utc)
+            },
+        )
 
 
 @api_view(["POST"])
@@ -28,6 +76,7 @@ def register_view(request):
 
     invitation_token = serializer.validated_data.get("invitation_token")
     company_name = serializer.validated_data.get("company_name")
+    email = serializer.validated_data["email"]
 
     if invitation_token:
         if company_name:
@@ -38,22 +87,32 @@ def register_view(request):
         invitation, error = inv_service.validate_token(invitation_token)
         if error:
             return Response({"invitation_token": [error]}, status=status.HTTP_400_BAD_REQUEST)
+        if _email_key(email) != _email_key(invitation.email):
+            return Response(
+                {
+                    "invitation_token": [
+                        "This invitation is bound to a different email address. "
+                        "Register with the email address it was sent to."
+                    ]
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         from django.db import IntegrityError
 
         try:
-            user = User.objects.get(email=serializer.validated_data["email"])
+            user = User.objects.get(email=email)
             created = False
         except User.DoesNotExist:
             try:
                 user = User.objects.create_user(
-                    email=serializer.validated_data["email"],
+                    email=email,
                     password=serializer.validated_data["password"],
                     display_name=display_name,
                 )
                 created = True
             except IntegrityError:
-                user = User.objects.get(email=serializer.validated_data["email"])
+                user = User.objects.get(email=email)
                 created = False
 
         membership, error = inv_service.accept_invitation(invitation_token, user)
@@ -62,9 +121,7 @@ def register_view(request):
                 User.objects.filter(id=user.id).delete()
             return Response({"invitation_token": [error]}, status=status.HTTP_400_BAD_REQUEST)
 
-        refresh = RefreshToken()
-        refresh["user_id"] = str(user.id)
-        refresh["tenant_id"] = str(membership.tenant.id)
+        refresh = _mint_refresh(user.id, tenant_id=membership.tenant.id)
 
         memberships_data = [
             {
@@ -81,10 +138,9 @@ def register_view(request):
             "role": membership.role,
         }
 
-        return Response(
+        response = Response(
             {
                 "access": str(refresh.access_token),
-                "refresh": str(refresh),
                 "user": {
                     "id": str(user.id),
                     "email": user.email,
@@ -96,17 +152,26 @@ def register_view(request):
             },
             status=status.HTTP_201_CREATED,
         )
+        set_refresh_cookie(response, refresh)
+        set_csrf_cookie(response, get_token(request))
+        return response
 
     service = AuthService()
     try:
         result = service.register(
-            email=serializer.validated_data["email"],
+            email=email,
             password=serializer.validated_data["password"],
             company_name=serializer.validated_data["company_name"],
         )
     except ValueError as e:
         return Response({"email": [str(e)]}, status=status.HTTP_400_BAD_REQUEST)
-    return Response(result, status=status.HTTP_201_CREATED)
+
+    refresh_value = result.pop("refresh")
+    refresh = RefreshToken(refresh_value)
+    response = Response(result, status=status.HTTP_201_CREATED)
+    set_refresh_cookie(response, refresh)
+    set_csrf_cookie(response, get_token(request))
+    return response
 
 
 @api_view(["POST"])
@@ -127,18 +192,34 @@ def login_view(request):
             return Response({"detail": error}, status=status.HTTP_403_FORBIDDEN)
         return Response({"detail": error}, status=status.HTTP_401_UNAUTHORIZED)
 
-    return Response(result)
+    remember_me = serializer.validated_data.get("remember_me", False)
+    refresh_value = result.pop("refresh")
+    refresh = RefreshToken(refresh_value)
+
+    response = Response(result)
+    set_refresh_cookie(response, refresh, remember_me=remember_me)
+    set_csrf_cookie(response, get_token(request))
+    return response
 
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def refresh_view(request):
-    serializer = TokenRefreshSerializer(data=request.data)
-    if not serializer.is_valid():
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    if csrf_invalid(request):
+        return Response(
+            {"detail": "CSRF verification failed."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    refresh_token = request.COOKIES.get(settings.REFRESH_COOKIE_NAME)
+    if not refresh_token:
+        return Response(
+            {"detail": "Refresh token not provided."},
+            status=status.HTTP_401_UNAUTHORIZED,
+        )
 
     try:
-        old_refresh = RefreshToken(serializer.validated_data["refresh"])
+        old_refresh = RefreshToken(refresh_token)
         jti = old_refresh.get("jti")
         if jti and BlacklistedToken.objects.filter(jti=jti).exists():
             raise Exception("Token blacklisted")
@@ -155,21 +236,17 @@ def refresh_view(request):
             except User.DoesNotExist:
                 raise Exception("User not found")
 
-        exp = old_refresh.get("exp")
-        if jti and exp:
-            BlacklistedToken.objects.get_or_create(
-                jti=jti,
-                defaults={"expires_at": dt_mod.datetime.fromtimestamp(exp, tz=dt_mod.timezone.utc)},
-            )
+        _blacklist(old_refresh)
 
-        new_refresh = RefreshToken()
-        new_refresh["user_id"] = old_refresh.get("user_id")
-        new_refresh["tenant_id"] = old_refresh.get("tenant_id")
+        new_refresh = _mint_refresh(
+            old_refresh.get("user_id"),
+            tenant_id=old_refresh.get("tenant_id"),
+            remember_me=_remember_me_from_token(old_refresh),
+        )
 
-        return Response({
-            "access": str(new_refresh.access_token),
-            "refresh": str(new_refresh),
-        })
+        response = Response({"access": str(new_refresh.access_token)})
+        set_refresh_cookie(response, new_refresh, remember_me=_remember_me_from_token(old_refresh))
+        return response
     except Exception:
         return Response(
             {"detail": "Invalid or expired refresh token."},
@@ -180,13 +257,21 @@ def refresh_view(request):
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def logout_view(request):
-    serializer = LogoutSerializer(data=request.data)
-    if not serializer.is_valid():
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    service = AuthService()
-    service.logout(serializer.validated_data["refresh"])
-    return Response(status=status.HTTP_205_RESET_CONTENT)
+    refresh_token = request.COOKIES.get(settings.REFRESH_COOKIE_NAME)
+    if refresh_token:
+        if csrf_invalid(request):
+            return Response(
+                {"detail": "CSRF verification failed."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        try:
+            refresh = RefreshToken(refresh_token)
+            _blacklist(refresh)
+        except Exception:
+            pass
+    response = Response(status=status.HTTP_205_RESET_CONTENT)
+    delete_refresh_cookie(response)
+    return response
 
 
 @api_view(["GET", "POST"])
@@ -241,6 +326,32 @@ def member_list_view(request):
 
 @api_view(["PATCH"])
 @permission_classes([IsAuthenticated, IsAdminUser])
+def member_status_update_view(request, user_id):
+    serializer = MemberStatusSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        membership = TeamService().set_user_status(
+            tenant_id=request.tenant_id,
+            member_user_id=user_id,
+            new_status=serializer.validated_data["status"],
+            requesting_user_id=request.user.id,
+        )
+    except Membership.DoesNotExist:
+        return Response(
+            {"detail": "Member not found."},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    except ValueError as e:
+        return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    result = MemberSerializer(membership)
+    return Response(result.data)
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated, IsAdminUser])
 def member_role_update_view(request, user_id):
     serializer = RoleChangeSerializer(data=request.data)
     if not serializer.is_valid():
@@ -288,10 +399,6 @@ def member_destroy_view(request, user_id):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def tenant_switch_view(request, tenant_id):
-    from rest_framework_simplejwt.tokens import RefreshToken
-
-    from apps.accounts.models import Membership
-
     try:
         membership = Membership.objects.select_related("tenant").get(
             user=request.user, tenant_id=tenant_id
@@ -313,14 +420,35 @@ def tenant_switch_view(request, tenant_id):
     if old_jti and old_exp:
         BlacklistedToken.objects.get_or_create(
             jti=old_jti,
-            defaults={"expires_at": dt_mod.datetime.fromtimestamp(old_exp, tz=dt_mod.timezone.utc)},
+            defaults={
+                "expires_at": dt_mod.datetime.fromtimestamp(old_exp, tz=dt_mod.timezone.utc)
+            },
         )
 
-    refresh = RefreshToken()
-    refresh["user_id"] = str(request.user.id)
-    refresh["tenant_id"] = str(tenant_id)
+    from_tenant_id = request.auth.get("tenant_id") if request.auth else None
 
-    return Response(
+    refresh_cookie = request.COOKIES.get(settings.REFRESH_COOKIE_NAME)
+    if refresh_cookie:
+        try:
+            _blacklist(RefreshToken(refresh_cookie))
+        except Exception:
+            pass
+
+    refresh = _mint_refresh(request.user.id, tenant_id=str(tenant_id))
+
+    AuditService.record(
+        action="tenant.switch",
+        tenant_id=tenant_id,
+        actor=request.user,
+        before={"from_tenant_id": from_tenant_id},
+        after={
+            "to_tenant_id": str(tenant_id),
+            "to_tenant_name": membership.tenant.name,
+            "role": membership.role,
+        },
+    )
+
+    response = Response(
         {
             "access": str(refresh.access_token),
             "tenant": {
@@ -330,6 +458,8 @@ def tenant_switch_view(request, tenant_id):
             },
         }
     )
+    set_refresh_cookie(response, refresh)
+    return response
 
 
 @api_view(["GET", "PATCH"])

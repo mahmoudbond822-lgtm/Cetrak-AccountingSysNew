@@ -3,6 +3,7 @@ import axios from 'axios'
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api/v1',
   headers: { 'Content-Type': 'application/json' },
+  withCredentials: true,
 })
 
 api.interceptors.request.use((config) => {
@@ -17,21 +18,34 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+export function readCookie(name) {
+  const nameEq = `${name}=`
+  const parts = document.cookie.split(';')
+  for (const part of parts) {
+    const trimmed = part.trim()
+    if (trimmed.startsWith(nameEq)) {
+      return decodeURIComponent(trimmed.slice(nameEq.length))
+    }
+  }
+  return null
+}
+
+export function csrfToken() {
+  return readCookie('csrftoken')
+}
+
 let refreshPromise = null
 
 async function refreshAccessToken() {
   if (!refreshPromise) {
     refreshPromise = (async () => {
-      const refresh = localStorage.getItem('refreshToken')
-      if (!refresh) throw new Error('No refresh token available')
+      const csrf = csrfToken()
       const { data } = await axios.post(
         `${api.defaults.baseURL}/auth/refresh/`,
-        { refresh }
+        {},
+        { withCredentials: true, headers: csrf ? { 'X-CSRFToken': csrf } : {} },
       )
       localStorage.setItem('accessToken', data.access)
-      if (data.refresh) {
-        localStorage.setItem('refreshToken', data.refresh)
-      }
       return data.access
     })().finally(() => {
       refreshPromise = null
@@ -52,9 +66,6 @@ api.interceptors.response.use(
     const originalRequest = error.config
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true
-      if (!localStorage.getItem('refreshToken')) {
-        return clearSessionAndRedirect(error)
-      }
       try {
         const access = await refreshAccessToken()
         originalRequest.headers.Authorization = `Bearer ${access}`
@@ -64,12 +75,11 @@ api.interceptors.response.use(
       }
     }
     return Promise.reject(error)
-  }
+  },
 )
 
-export function setTokens(access, refresh) {
+export function setTokens(access) {
   localStorage.setItem('accessToken', access)
-  if (refresh) localStorage.setItem('refreshToken', refresh)
 }
 
 export function setActiveTenant(id, name, role) {
@@ -85,7 +95,6 @@ export function clearAuth() {
 export function getAuth() {
   return {
     accessToken: localStorage.getItem('accessToken'),
-    refreshToken: localStorage.getItem('refreshToken'),
     activeTenantId: localStorage.getItem('activeTenantId'),
     activeTenantName: localStorage.getItem('activeTenantName'),
     activeTenantRole: localStorage.getItem('activeTenantRole'),

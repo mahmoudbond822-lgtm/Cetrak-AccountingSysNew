@@ -51,6 +51,24 @@ export default function TeamPage() {
     }
   }
 
+  async function handleToggleStatus(m) {
+    const next = m.status === 'Disabled' ? 'Active' : 'Disabled'
+    const action = next === 'Disabled' ? 'disable' : 'enable'
+    if (!window.confirm(`Are you sure you want to ${action} ${m.email}?`)) {
+      return
+    }
+    try {
+      const { data } = await api.patch(`/tenants/members/${m.user_id}/status/`, {
+        status: next,
+      })
+      setMembers((prev) =>
+        prev.map((x) => (x.user_id === m.user_id ? { ...x, status: data.status } : x)),
+      )
+    } catch (err) {
+      setError(err.response?.data?.detail || `Failed to ${action} member.`)
+    }
+  }
+
   async function handleCancelInvite(inviteId) {
     try {
       await api.delete(`/tenants/invitations/${inviteId}/`)
@@ -123,6 +141,9 @@ export default function TeamPage() {
                 <td>
                   <button onClick={() => handleRemove(m.user_id)} style={{ color: 'red' }}>
                     Remove
+                  </button>
+                  <button onClick={() => handleToggleStatus(m)}>
+                    {m.status === 'Disabled' ? 'Enable' : 'Disable'}
                   </button>
                 </td>
               </tr>

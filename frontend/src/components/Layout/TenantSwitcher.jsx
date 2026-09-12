@@ -15,7 +15,7 @@ export default function TenantSwitcher() {
     }
     try {
       const { data } = await api.post(`/tenants/switch/${tenant.id}/`)
-      setTokens(data.access, localStorage.getItem('refreshToken'))
+      setTokens(data.access)
       setActiveTenant(data.tenant.id, data.tenant.name, data.tenant.role)
       window.location.reload()
     } catch {

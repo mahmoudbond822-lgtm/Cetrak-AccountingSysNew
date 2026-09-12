@@ -114,3 +114,21 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
+
+REFRESH_COOKIE_NAME = os.environ.get("DJANGO_REFRESH_COOKIE_NAME", "refresh_token")
+REFRESH_COOKIE_PATH = os.environ.get("DJANGO_REFRESH_COOKIE_PATH", "/api/v1/")
+REFRESH_COOKIE_SECURE = os.environ.get("DJANGO_REFRESH_COOKIE_SECURE", "false").lower() == "true"
+REFRESH_COOKIE_SAMESITE = os.environ.get("DJANGO_REFRESH_COOKIE_SAMESITE", "Lax")
+
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self'; "
+    "img-src 'self' data:; "
+    "font-src 'self' data:; "
+    "connect-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "frame-ancestors 'none'; "
+    "form-action 'self'"
+)

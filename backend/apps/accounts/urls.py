@@ -10,6 +10,7 @@ urlpatterns = [
     path("tenants/invitations/", views.invitation_list_create_view, name="tenant-invitations"),
     path("tenants/invitations/<uuid:invitation_id>/", views.invitation_destroy_view, name="tenant-invitation-detail"),
     path("tenants/members/", views.member_list_view, name="tenant-members"),
+    path("tenants/members/<uuid:user_id>/status/", views.member_status_update_view, name="tenant-member-status"),
     path("tenants/members/<uuid:user_id>/role/", views.member_role_update_view, name="tenant-member-role"),
     path("tenants/members/<uuid:user_id>/", views.member_destroy_view, name="tenant-member-remove"),
     path("tenants/switch/<uuid:tenant_id>/", views.tenant_switch_view, name="tenant-switch"),

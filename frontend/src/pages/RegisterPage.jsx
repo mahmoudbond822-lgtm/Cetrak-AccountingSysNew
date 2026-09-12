@@ -22,7 +22,7 @@ export default function RegisterPage() {
     }
     try {
       const { data } = await api.post('/auth/register/', payload)
-      setTokens(data.access, data.refresh)
+      setTokens(data.access)
       if (data.user) {
         localStorage.setItem('userEmail', data.user.email)
       }

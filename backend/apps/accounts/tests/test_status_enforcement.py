@@ -4,6 +4,7 @@ from django.urls import reverse
 
 from apps.core.models import Tenant
 from apps.accounts.models import User, Membership
+from apps.accounts.tests.helpers import post_refresh
 
 
 class BaseStatusSetup(APITestCase):
@@ -49,7 +50,6 @@ class UserStatusEnforcementTests(APITestCase):
             format="json",
         )
         self.token = login_resp.data["access"]
-        self.refresh = login_resp.data["refresh"]
         self.tenant_id = self.tenant.id
 
     def test_active_user_access_allowed(self):
@@ -82,9 +82,7 @@ class UserStatusEnforcementTests(APITestCase):
     def test_disabled_user_refresh_rejected(self):
         self.user.status = User.Status.DISABLED
         self.user.save()
-        response = self.client.post(
-            reverse("auth-refresh"), {"refresh": self.refresh}, format="json"
-        )
+        response = post_refresh(self.client)
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
     def test_active_user_login_unchanged_for_active_tenant(self):

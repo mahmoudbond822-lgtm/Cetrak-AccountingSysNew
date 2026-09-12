@@ -1,48 +1,45 @@
 <!-- SPECKIT START -->
-Implementation plan: specs/012-hardening/plan.md
+Implementation plan: specs/012-hardening-h2/plan.md
 
-Current phase: HARDENING COMPLETE — Feature 012-H (Production Hardening) resolved all seven AUD-001 P1 blockers (07: unposted JEs in reports + Journal UI posting; balance-sheet net loss; refresh-token rotation; invoice modal reset; Decimal money math; immutable audit trail; disabled-user/suspended-tenant enforcement). Features 001–012 remain implemented. Full suite 324 passed, 1 postgres-only skip, migrations clean, frontend build green, lint unchanged (16 pre-existing problems). Do not push or deploy.
+Current phase: 012-H2 IDENTITY & SESSION HARDENING COMPLETE — resolved AUD-008 (invitation email binding), AUD-009 (refresh token moved to HttpOnly cookie + double-submit CSRF + restrictive CSP/security headers in prod), AUD-017 (tenant-switch rotates the refresh cookie, no tenant-context drift on refresh), and the operator user-disable gap (`PATCH /tenants/members/{id}/status/`, last-admin guard, `me` status read-only). Features 001–012 remain implemented. Full suite 367 passed, 1 postgres-only skip, migrations clean, frontend build green, lint unchanged (16 pre-existing problems). Do not push or deploy.
 
 ## What This Phase Does
 
-Closes the P1 blockers from `docs/audits/production-readiness-audit-001.md` (READY WITH CONDITIONS, 63/100) without creating Feature 013:
-- **P1-1** Ledger + all report aggregation filter `entry__posted=True`; Journal UI has a real Save Draft → Post flow.
-- **P1-2** Balance Sheet no longer clamps; net loss flows signed into "Retained Earnings (Current Period)" and the sheet balances in loss periods.
-- **P1-3** Frontend refresh interceptor is single-flight, persists the rotated refresh token, retries the original request, clears the session only on genuine failure.
-- **P1-4** Invoice modal remounts per record (`key`-remount, parity with payment/purchase pages).
-- **P1-5** Accounting service + serializer money math is Decimal with exact equality (float tolerance removed).
-- **P1-6** New append-only `core.AuditLog` + `AuditService` writes tenant/actor-scoped, immutable, sanitized audit rows from every service-layer mutation.
-- **P1-7** Shared `TenantScopedPermission` base enforces ACTIVE user + ACTIVE tenant + membership on every endpoint; JWT auth rejects disabled users; `/tenants/switch/` refuses non-ACTIVE tenants.
+Hardens the identity/session layer per AUD-002 (`docs/audits/production-readiness-re-audit-002.md` gap → report at `docs/audits/production-hardening-h2-report-001.md`, 79/100 READY WITH CONDITIONS baseline) without creating Feature 013:
+- **H2-1 (AUD-008)** `_email_key` canonical binding: invitations stored canonical; acceptance rejects a different email before any user is created; generic message (no enumeration); invitation stays reusable.
+- **H2-2 (AUD-009)** Refresh token leaves localStorage → HttpOnly `refresh_token` cookie (path `/api/v1/`, SameSite=Lax, Secure forced in prod, max-age = 7d/30d remember-me) and is removed from all response bodies. `/auth/refresh/` + `/auth/logout/` require double-submit CSRF (masked `csrftoken` cookie vs `X-CSRFToken`, constant-time). Prod emits a restrictive CSP + nosniff/Referrer-Policy/Permissions-Policy via `SecurityHeadersMiddleware`.
+- **H2-3 (AUD-017)** `tenant_switch` blacklists the current refresh cookie and lands a new one scoped to the target tenant; refresh always mints from the cookie's own claims so tenant context survives rotation; old refreshes cannot rewind; `tenant.switch` audited with source/target.
+- **H2-4 (Operator user-disable)** `TeamService.set_user_status` + `PATCH /tenants/members/{id}/status/` (Admin, tenant-scoped 404, last-admin guard, audited `member.disable`/`member.enable`); `UserSerializer.status` read-only so `me` can no longer self-disable; Team UI Enable/Disable. Disable is global (account-level); per-tenant removal stays on the existing DELETE.
 
 ## Generated Artifacts
 
-- `docs/audits/production-hardening-report-001.md` — Authoritative hardening report (baseline, findings, files, tests, regression, readiness)
-- `specs/012-hardening/spec.md` — Hardening specification (implemented)
-- `specs/012-hardening/plan.md` — Implementation plan, phases H1–H7 (implemented)
-- `specs/012-hardening/tasks.md` — Implementation tasks (all complete)
-- `specs/012-hardening/data-model.md` — `core_audit_log` data model + immutability notes
-- `specs/012-hardening/quickstart.md` — Manual verification (P1-3/P1-4 frontend; no UI test harness)
-- `specs/012-hardening/checklists/requirements.md` — Spec quality checklist (verified at close-out)
-- `specs/012-hardening/report.md` — Implementation report
+- `docs/audits/production-hardening-h2-report-001.md` — Authoritative H2 hardening report (baseline, findings, implementation, files, contracts, regression, readiness, next steps)
+- `specs/012-hardening-h2/spec.md` — H2 specification (implemented)
+- `specs/012-hardening-h2/plan.md` — Implementation plan, phases H2-1…H2-4 (implemented)
+- `specs/012-hardening-h2/tasks.md` — Implementation tasks (all complete)
+- `specs/012-hardening-h2/quickstart.md` — Manual browser verification (cookies, CSRF, switch, invitation binding, disable)
+- `specs/012-hardening-h2/checklists/requirements.md` — Spec quality checklist (verified at close-out)
+- `specs/012-hardening-h2/report.md` — Implementation report
 
 ## Key Decisions (locked in the plan)
 
-- Report/ledger inclusion requires `posted=True` unconditionally (no permission-gated draft inclusion this pass).
-- Audit writes happen exclusively in the service layer via `AuditService.record`; no view-layer audit logic; sensitive keys recursively scrubbed (password/refresh/access/token/secret/api_key/session).
-- Status enforcement centralized: `TenantScopedPermission` (core) is the single membership + ACTIVE-tenant gate; `BlacklistCheckingJWTAuth` rejects non-ACTIVE users on valid tokens (no reliance on token expiry).
-- No token-storage redesign (HttpOnly cookies deferred to AUD-009/P2); no DB-level audit trigger (app-layer guards + no write endpoints; documented limitation).
-- Backend half of P1-1/P1-2/P1-5 + Journal UI posting landed in commit `ec5563a` (18 integrity tests); this pass delivered P1-3/P1-4/P1-6/P1-7 and verified all seven end-to-end.
+- `from_tenant_id` on `tenant.switch` reads the **access-token claim** (`request.auth.get("tenant_id")`), since `TenantResolutionMiddleware` deliberately nulls `request.tenant_id` on switch paths; unbound (multi-tenant-login) sessions honestly record `None`.
+- One authoritative CSRF flow: double-submit on the cookie-consuming endpoints (refresh/logout); login/register rely on SameSite=Lax (no ambient session yet) and switch on the Authorization header.
+- Access token remains in localStorage — the documented residual (HttpOnly+credential redesign stays deferred/out-of-scope).
+- `User.status` disable is **global** per the data model; per-tenant removal unchanged.
+- `SecurityHeadersMiddleware` is prod-only so dev/test tooling is untouched.
+- Contract change (no `refresh` in bodies) adopted deliberately and everything affected migrated in the same commit.
 
 ## Next Steps (after review)
 
-- Review the hardening report and `specs/012-hardening/*`. Remaining P2/P3 items (AUD-008…AUD-030, e.g. bcrypt, Celery, HttpOnly tokens, pagination) are out of scope and documented for future phases. Do not push or deploy; commit via the auto-commit hook only.
+- Review the H2 hardening report and `specs/012-hardening-h2/*`. Remaining P2 (AUD-010, 011, 012, 015, 025, 026) and P3 (019, 023, 027, 029 + access-token granularity observations) are documented for future phases — natural next candidates: AUD-025 bcrypt, AUD-026 Celery. Do not push or deploy; commit via the auto-commit hook only.
 
 ## Quick Reference
 
-- Backend tests: `cd backend && $env:DJANGO_SETTINGS_MODULE="config.settings.test"; py -m pytest apps/ -q` → 324 passed, 1 postgres-only skip (274 baseline + 18 financial-integrity + 4 token-rotation + 10 status-enforcement + 17 audit-trail + 52-inventory + 223 pre-existing)
-- New backend pieces: `apps/core/audit.py`, `apps/core/permissions.py`, `core.AuditLog` (migration `core/0002_auditlog`), `AuditService.record(...)` wired into accounts/accounting/sales/purchases/inventory services
-- Frontend changed files: `src/services/api.js` (single-flight rotated refresh), `src/pages/sales/InvoicesPage.jsx` (modal remount `key`)
-- Migrations: `py manage.py makemigrations --check --dry-run` → "No changes detected"
-- Frontend: `npm run build` clean; `npm run lint` still exactly 16 pre-existing problems (zero new)
+- Backend tests: `cd backend && $env:DJANGO_SETTINGS_MODULE="config.settings.test"; py -m pytest apps/ -q` → 367 passed, 1 postgres-only skip (324 baseline + 8 invitation-binding + 10 refresh-cookie/CSRF + 12 tenant-switch-session + 11 user-disable + 2 security-headers)
+- New backend pieces: `apps/accounts/cookies.py`, `_email_key` + `TeamService.set_user_status` in `apps/accounts/services.py`, status route `tenant-member-status`, `SecurityHeadersMiddleware` in `apps/core/middleware.py`
+- Frontend changed files: `src/services/api.js` (cookie refresh + CSRF header, single-flight, no refresh storage), `src/pages/{LoginPage,RegisterPage,DashboardPage,TeamPage}.jsx`, `src/components/Layout/TenantSwitcher.jsx`
+- Migrations: `py manage.py makemigrations --check --dry-run` → "No changes detected" (behavior+config only)
+- Frontend: `npm run build` clean (399.52 kB JS / 110.36 kB gzip); `npm run lint` still exactly 16 pre-existing problems (zero new)
 - Docker Compose: `docker compose -f infra/docker-compose.yml up`
 <!-- SPECKIT END -->

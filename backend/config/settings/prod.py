@@ -37,10 +37,25 @@ MIDDLEWARE.insert(
     MIDDLEWARE.index("django.middleware.security.SecurityMiddleware") + 1,
     "whitenoise.middleware.WhiteNoiseMiddleware",
 )
+MIDDLEWARE.append("apps.core.middleware.SecurityHeadersMiddleware")
 
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = _csv_env("CORS_ALLOWED_ORIGINS")
 CSRF_TRUSTED_ORIGINS = _csv_env("CSRF_TRUSTED_ORIGINS")
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = list(__import__("corsheaders.defaults", fromlist=["default_headers"]).default_headers) + [
+    "x-csrf-token",
+    "x-tenant-id",
+]
+
+REFRESH_COOKIE_SECURE = True
+
+_extra_connect_src = _csv_env("DJANGO_CSP_CONNECT_SRC")
+if _extra_connect_src:
+    CONTENT_SECURITY_POLICY = CONTENT_SECURITY_POLICY.replace(
+        "connect-src 'self'",
+        "connect-src 'self' " + " ".join(_extra_connect_src),
+    )
 
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STORAGES = {

@@ -17,7 +17,7 @@ export default function LoginPage() {
     setError('')
     try {
       const { data } = await api.post('/auth/login/', form)
-      setTokens(data.access, data.refresh)
+      setTokens(data.access)
       if (data.user) {
         localStorage.setItem('userEmail', data.user.email)
       }

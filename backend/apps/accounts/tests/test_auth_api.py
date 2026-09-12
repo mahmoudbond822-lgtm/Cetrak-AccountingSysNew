@@ -3,6 +3,8 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 from django.urls import reverse
 
+from apps.accounts.tests import helpers as test_helpers
+
 
 class RegisterTests(APITestCase):
     def test_register_success_returns_201_with_tokens(self):
@@ -15,9 +17,12 @@ class RegisterTests(APITestCase):
         response = self.client.post(url, data, format="json")
         assert response.status_code == status.HTTP_201_CREATED
         assert "access" in response.data
-        assert "refresh" in response.data
+        assert "refresh" not in response.data
         assert response.data["user"]["email"] == "user@example.com"
         assert response.data["tenant"]["name"] == "Test Corp"
+        assert "refresh_token" in response.cookies
+        assert response.cookies["refresh_token"].value
+        assert response.cookies["refresh_token"]["httponly"]
 
     def test_register_duplicate_email_returns_400(self):
         url = reverse("auth-register")
@@ -47,9 +52,11 @@ class LoginTests(APITestCase):
         response = self.client.post(url, data, format="json")
         assert response.status_code == status.HTTP_200_OK
         assert "access" in response.data
-        assert "refresh" in response.data
+        assert "refresh" not in response.data
         assert len(response.data["tenants"]) == 1
         assert response.data["active_tenant"] is not None
+        assert "refresh_token" in response.cookies
+        assert response.cookies["refresh_token"].value
 
     def test_login_wrong_password_returns_401(self):
         url = reverse("auth-login")
@@ -81,15 +88,14 @@ class TokenRefreshTests(APITestCase):
         self.client.post(url, data, format="json")
 
     def test_token_refresh_returns_new_access_token(self):
-        login_url = reverse("auth-login")
-        login_data = {"email": "user@example.com", "password": "SecurePass123"}
-        login_resp = self.client.post(login_url, login_data, format="json")
-        refresh_token = login_resp.data["refresh"]
+        login_resp = test_helpers.login(self.client, "user@example.com", "SecurePass123")
+        assert login_resp.status_code == status.HTTP_200_OK
+        assert "refresh_token" in self.client.cookies
 
-        url = reverse("auth-refresh")
-        response = self.client.post(url, {"refresh": refresh_token}, format="json")
+        response = test_helpers.post_refresh(self.client)
         assert response.status_code == status.HTTP_200_OK
         assert "access" in response.data
+        assert "refresh" not in response.data
 
 
 class TokenRotationTests(APITestCase):
@@ -101,52 +107,42 @@ class TokenRotationTests(APITestCase):
             "company_name": "Test Corp",
         }
         self.client.post(url, data, format="json")
-        login_resp = self.client.post(
-            reverse("auth-login"),
-            {"email": "user@example.com", "password": "SecurePass123"},
-            format="json",
-        )
-        self.refresh_token = login_resp.data["refresh"]
+        login_resp = test_helpers.login(self.client, "user@example.com", "SecurePass123")
+        self.refresh_token = test_helpers.refresh_cookie_value(self.client)
         self.refresh_url = reverse("auth-refresh")
 
-    def test_refresh_returns_new_access_and_new_refresh(self):
-        response = self.client.post(
-            self.refresh_url, {"refresh": self.refresh_token}, format="json"
-        )
+    def test_refresh_returns_new_access_and_rotates_cookie(self):
+        response = test_helpers.post_refresh(self.client)
         assert response.status_code == status.HTTP_200_OK
         assert "access" in response.data
-        assert "refresh" in response.data
-        assert response.data["refresh"] != self.refresh_token
+        assert "refresh" not in response.data
+        rotated = test_helpers.refresh_cookie_value(self.client)
+        assert rotated != self.refresh_token
 
     def test_old_refresh_blacklisted_after_rotation(self):
-        response = self.client.post(
-            self.refresh_url, {"refresh": self.refresh_token}, format="json"
-        )
+        response = test_helpers.post_refresh(self.client)
         assert response.status_code == status.HTTP_200_OK
         old = self.refresh_token
-        self.refresh_token = response.data["refresh"]
 
-        reuse = self.client.post(self.refresh_url, {"refresh": old}, format="json")
+        self.client.cookies["refresh_token"] = old
+        reuse = test_helpers.post_refresh(self.client)
         assert reuse.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_rotated_refresh_token_can_be_reused_exactly_once(self):
-        first = self.client.post(
-            self.refresh_url, {"refresh": self.refresh_token}, format="json"
-        )
+        first = test_helpers.post_refresh(self.client)
         assert first.status_code == status.HTTP_200_OK
-        rotated = first.data["refresh"]
+        rotated = test_helpers.refresh_cookie_value(self.client)
 
-        second = self.client.post(self.refresh_url, {"refresh": rotated}, format="json")
+        second = test_helpers.post_refresh(self.client)
         assert second.status_code == status.HTTP_200_OK
-        assert second.data["refresh"] != rotated
+        assert test_helpers.refresh_cookie_value(self.client) != rotated
 
-        third = self.client.post(self.refresh_url, {"refresh": rotated}, format="json")
+        self.client.cookies["refresh_token"] = rotated
+        third = test_helpers.post_refresh(self.client)
         assert third.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_refresh_after_rotation_issues_working_access_token(self):
-        response = self.client.post(
-            self.refresh_url, {"refresh": self.refresh_token}, format="json"
-        )
+        response = test_helpers.post_refresh(self.client)
         assert response.status_code == status.HTTP_200_OK
         access = response.data["access"]
 
@@ -166,24 +162,18 @@ class LogoutTests(APITestCase):
             "company_name": "Test Corp",
         }
         self.client.post(url, data, format="json")
-        login_resp = self.client.post(
-            reverse("auth-login"),
-            {"email": "user@example.com", "password": "SecurePass123"},
-            format="json",
-        )
-        self.refresh_token = login_resp.data["refresh"]
+        test_helpers.login(self.client, "user@example.com", "SecurePass123")
+        self.refresh_token = test_helpers.refresh_cookie_value(self.client)
 
-    def test_logout_returns_205(self):
-        url = reverse("auth-logout")
-        response = self.client.post(url, {"refresh": self.refresh_token}, format="json")
+    def test_logout_returns_205_and_clears_cookie(self):
+        response = test_helpers.post_logout(self.client)
         assert response.status_code == status.HTTP_205_RESET_CONTENT
+        assert test_helpers.refresh_cookie_value(self.client) == ""
 
     def test_logout_blacklisted_token_cannot_refresh(self):
-        url = reverse("auth-logout")
-        self.client.post(url, {"refresh": self.refresh_token}, format="json")
-
-        refresh_url = reverse("auth-refresh")
-        response = self.client.post(refresh_url, {"refresh": self.refresh_token}, format="json")
+        test_helpers.post_logout(self.client)
+        self.client.cookies["refresh_token"] = self.refresh_token
+        response = test_helpers.post_refresh(self.client)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
