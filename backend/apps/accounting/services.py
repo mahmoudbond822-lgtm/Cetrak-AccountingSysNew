@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.db.models import Sum
 
 from apps.accounting.models import Account, JournalEntry, JournalEntryLine
+from apps.core.audit import AuditService
 
 
 def _as_decimal(value):
@@ -25,6 +26,18 @@ class AccountingService:
             type=account_type,
             parent_id=parent_pk,
             description=description,
+        )
+        AuditService.record(
+            action="account.create",
+            tenant_id=self.tenant_id,
+            target=account,
+            after={
+                "name": account.name,
+                "type": account.type,
+                "parent_id": str(account.parent_id) if account.parent_id else None,
+                "description": account.description,
+                "is_active": account.is_active,
+            },
         )
         return account
 
@@ -56,6 +69,13 @@ class AccountingService:
             )
         account.is_active = False
         account.save()
+        AuditService.record(
+            action="account.deactivate",
+            tenant_id=self.tenant_id,
+            target=account,
+            before={"name": account.name, "type": account.type, "is_active": True},
+            after={"name": account.name, "type": account.type, "is_active": False},
+        )
         return account
 
     def account_is_used(self, account_id):
@@ -64,6 +84,12 @@ class AccountingService:
 
     def update_account(self, account_id, **kwargs):
         account = self.get_account(account_id)
+        before = {
+            "name": account.name,
+            "type": account.type,
+            "description": account.description,
+            "is_active": account.is_active,
+        }
         if "type" in kwargs and kwargs["type"] != account.type:
             if account.journal_lines.exists():
                 raise ValueError(
@@ -73,6 +99,18 @@ class AccountingService:
         for key, value in kwargs.items():
             setattr(account, key, value)
         account.save()
+        AuditService.record(
+            action="account.update",
+            tenant_id=self.tenant_id,
+            target=account,
+            before=before,
+            after={
+                "name": account.name,
+                "type": account.type,
+                "description": account.description,
+                "is_active": account.is_active,
+            },
+        )
         return account
 
 
@@ -91,6 +129,25 @@ class JournalEntryService:
             line_data = dict(line_data)
             line_data['account_id'] = getattr(line_data.get('account_id'), 'pk', line_data.get('account_id'))
             JournalEntryLine.objects.create(entry=entry, **line_data)
+        AuditService.record(
+            action="journal.create",
+            tenant_id=self.tenant_id,
+            target=entry,
+            after={
+                "date": str(entry.date),
+                "description": entry.description,
+                "reference": entry.reference,
+                "posted": entry.posted,
+                "lines": [
+                    {
+                        "account_id": str(line.account_id),
+                        "debit": str(line.debit),
+                        "credit": str(line.credit),
+                    }
+                    for line in entry.lines.all()
+                ],
+            },
+        )
         return entry
 
     def list_entries(self, date_from=None, date_to=None):
@@ -116,6 +173,17 @@ class JournalEntryService:
         if not lines.exists():
             raise ValueError("Cannot post a journal entry with no lines.")
         entry.post_entry()
+        AuditService.record(
+            action="journal.post",
+            tenant_id=self.tenant_id,
+            target=entry,
+            after={
+                "reference": entry.reference,
+                "date": str(entry.date),
+                "posted": True,
+                "posted_at": entry.posted_at.isoformat() if entry.posted_at else None,
+            },
+        )
         return entry
 
 

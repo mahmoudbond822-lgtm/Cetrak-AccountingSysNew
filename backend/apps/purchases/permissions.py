@@ -1,41 +1,17 @@
-from rest_framework.permissions import BasePermission
+from apps.core.permissions import TenantScopedPermission
 
 
-class CanViewPurchases(BasePermission):
-    def has_permission(self, request, view):
-        if not request.user or not request.user.is_authenticated:
-            return False
-        return request.user.memberships.filter(
-            tenant_id=request.tenant_id,
-            role__in=["Admin", "Accountant", "Manager"],
-        ).exists()
+class CanViewPurchases(TenantScopedPermission):
+    allowed_roles = ["Admin", "Accountant", "Manager"]
 
 
-class CanManagePurchases(BasePermission):
-    def has_permission(self, request, view):
-        if not request.user or not request.user.is_authenticated:
-            return False
-        return request.user.memberships.filter(
-            tenant_id=request.tenant_id,
-            role__in=["Admin", "Accountant"],
-        ).exists()
+class CanManagePurchases(TenantScopedPermission):
+    allowed_roles = ["Admin", "Accountant"]
 
 
-class CanPostPurchaseInvoice(BasePermission):
-    def has_permission(self, request, view):
-        if not request.user or not request.user.is_authenticated:
-            return False
-        return request.user.memberships.filter(
-            tenant_id=request.tenant_id,
-            role__in=["Admin", "Accountant"],
-        ).exists()
+class CanPostPurchaseInvoice(TenantScopedPermission):
+    allowed_roles = ["Admin", "Accountant"]
 
 
-class CanConfigurePurchases(BasePermission):
-    def has_permission(self, request, view):
-        if not request.user or not request.user.is_authenticated:
-            return False
-        return request.user.memberships.filter(
-            tenant_id=request.tenant_id,
-            role__in=["Admin"],
-        ).exists()
+class CanConfigurePurchases(TenantScopedPermission):
+    allowed_roles = ["Admin"]

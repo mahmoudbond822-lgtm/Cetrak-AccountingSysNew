@@ -160,6 +160,7 @@ export default function InvoicesPage() {
         )}
 
         <InvoiceForm
+          key={showModal ? (editing?.id ?? 'new-open') : (editing?.id ?? 'new-closed')}
           open={showModal}
           onClose={() => setShowModal(false)}
           invoice={editing}

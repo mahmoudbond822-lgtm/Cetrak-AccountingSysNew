@@ -5,6 +5,7 @@ from django.db import IntegrityError
 from django.utils import timezone
 
 from apps.accounting.models import Account, JournalEntry, JournalEntryLine
+from apps.core.audit import AuditService
 from apps.inventory.models import Product, StockMovement
 from apps.inventory.services import StockService, _quantize
 from apps.purchases.models import (
@@ -28,6 +29,11 @@ class PurchaseSettingsService:
 
     def update(self, **mappings):
         settings = self.get()
+        before = {
+            "accounts_payable_id": str(settings.accounts_payable_id) if settings.accounts_payable_id else None,
+            "expense_account_id": str(settings.expense_account_id) if settings.expense_account_id else None,
+            "input_vat_id": str(settings.input_vat_id) if settings.input_vat_id else None,
+        }
         for field, account in mappings.items():
             if account is None:
                 setattr(settings, field, None)
@@ -51,6 +57,17 @@ class PurchaseSettingsService:
                 )
             setattr(settings, field, account)
         settings.save()
+        AuditService.record(
+            action="settings.purchase.update",
+            tenant_id=self.tenant_id,
+            target=settings,
+            before=before,
+            after={
+                "accounts_payable_id": str(settings.accounts_payable_id) if settings.accounts_payable_id else None,
+                "expense_account_id": str(settings.expense_account_id) if settings.expense_account_id else None,
+                "input_vat_id": str(settings.input_vat_id) if settings.input_vat_id else None,
+            },
+        )
         return settings
 
 
@@ -164,12 +181,36 @@ class PurchaseInvoiceService:
                     )
         except IntegrityError as exc:
             raise ValueError("Invoice number already exists.")
+        AuditService.record(
+            action="purchase.invoice.create",
+            tenant_id=self.tenant_id,
+            target=invoice,
+            after={
+                "number": invoice.number,
+                "vendor_id": str(invoice.vendor_id),
+                "status": invoice.status,
+                "invoice_date": str(invoice.invoice_date),
+                "due_date": str(invoice.due_date) if invoice.due_date else None,
+                "discount": str(invoice.discount),
+                "subtotal": str(invoice.subtotal),
+                "tax": str(invoice.tax),
+                "total": str(invoice.total),
+            },
+        )
         return invoice
 
     def update_draft(self, invoice_id, *, number=None, vendor_id=None,
                      invoice_date=None, due_date=_UNSET, discount=None,
                      notes=_UNSET, lines_data=None):
         invoice = self._get_invoice(invoice_id)
+        before = {
+            "number": invoice.number,
+            "vendor_id": str(invoice.vendor_id),
+            "status": invoice.status,
+            "subtotal": str(invoice.subtotal),
+            "tax": str(invoice.tax),
+            "total": str(invoice.total),
+        }
         if invoice.status != PurchaseInvoice.Status.DRAFT:
             raise ValueError("Only draft purchase invoices can be edited.")
         if number is not None:
@@ -241,6 +282,21 @@ class PurchaseInvoiceService:
                 invoice.save()
         except IntegrityError:
             raise ValueError("Invoice number already exists.")
+        AuditService.record(
+            action="purchase.invoice.update",
+            tenant_id=self.tenant_id,
+            target=invoice,
+            before=before,
+            after={
+                "number": invoice.number,
+                "vendor_id": str(invoice.vendor_id),
+                "status": invoice.status,
+                "discount": str(invoice.discount),
+                "subtotal": str(invoice.subtotal),
+                "tax": str(invoice.tax),
+                "total": str(invoice.total),
+            },
+        )
         return invoice
 
     def post_invoice(self, invoice_id):
@@ -389,6 +445,18 @@ class PurchaseInvoiceService:
                 invoice.save(update_fields=[
                     "posted_journal", "status", "posted_at", "updated_at",
                 ])
+                AuditService.record(
+                    action="purchase.invoice.post",
+                    tenant_id=self.tenant_id,
+                    target=invoice,
+                    before={"status": PurchaseInvoice.Status.DRAFT},
+                    after={
+                        "status": PurchaseInvoice.Status.POSTED,
+                        "number": invoice.number,
+                        "total": str(invoice.total),
+                        "journal_reference": reference,
+                    },
+                )
         except IntegrityError:
             raise ValueError("Journal entry reference already exists.")
         return invoice
@@ -397,4 +465,16 @@ class PurchaseInvoiceService:
         invoice = self._get_invoice(invoice_id)
         if invoice.status != PurchaseInvoice.Status.DRAFT:
             raise ValueError("Only draft purchase invoices can be deleted.")
+        before = {
+            "number": invoice.number,
+            "vendor_id": str(invoice.vendor_id),
+            "status": invoice.status,
+            "total": str(invoice.total),
+        }
         invoice.delete()
+        AuditService.record(
+            action="purchase.invoice.delete",
+            tenant_id=self.tenant_id,
+            target=invoice,
+            before=before,
+        )

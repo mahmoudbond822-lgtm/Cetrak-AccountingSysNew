@@ -1,45 +1,48 @@
 <!-- SPECKIT START -->
-Implementation plan: specs/012-inventory/plan.md
+Implementation plan: specs/012-hardening/plan.md
 
-Current phase: IMPLEMENTATION COMPLETE — Feature 012 (Inventory Management) implemented end to end (backend + 52-test inventory suite + frontend + docs); full suite 274 passed, 1 postgres-only skip, migrations clean. Do not push or deploy.
+Current phase: HARDENING COMPLETE — Feature 012-H (Production Hardening) resolved all seven AUD-001 P1 blockers (07: unposted JEs in reports + Journal UI posting; balance-sheet net loss; refresh-token rotation; invoice modal reset; Decimal money math; immutable audit trail; disabled-user/suspended-tenant enforcement). Features 001–012 remain implemented. Full suite 324 passed, 1 postgres-only skip, migrations clean, frontend build green, lint unchanged (16 pre-existing problems). Do not push or deploy.
 
-## What This Feature Does
+## What This Phase Does
 
-Inventory Management — perpetual stock-keeping integrated directly with the Accounting system: **Purchase → Stock Receipt → Inventory → Sales → Stock Issue → COGS → Accounting**. A new `apps/inventory` app owns the tenant-scoped product catalog (`Product`), a single default `Warehouse` (lazily created per tenant), a maintained `StockBalance` (quantity, value, moving-average cost) backed by an immutable append-only `StockMovement` ledger, and `StockAdjustment` drafts that post balanced `ADJ-INV-{number}` journal entries. Product lines on purchase invoices post a stock receipt (Dr Inventory, Dr Input VAT, Cr AP — net after proportional discount, VAT excluded from cost); product lines on sales invoices post a stock issue plus **Dr COGS / Cr Inventory** at the moving weighted-average cost inside the existing balanced `SALES-INV-{number}` entry. Non-product (service) lines keep Features 009/011 behavior byte-for-byte via additive nullable `product` FKs. Negative stock is hard-rejected; posting is atomic, row-locked (`select_for_update` on `StockBalance` rows in a stable order), idempotent (unique `(tenant, reference)`), and tenant-isolated.
+Closes the P1 blockers from `docs/audits/production-readiness-audit-001.md` (READY WITH CONDITIONS, 63/100) without creating Feature 013:
+- **P1-1** Ledger + all report aggregation filter `entry__posted=True`; Journal UI has a real Save Draft → Post flow.
+- **P1-2** Balance Sheet no longer clamps; net loss flows signed into "Retained Earnings (Current Period)" and the sheet balances in loss periods.
+- **P1-3** Frontend refresh interceptor is single-flight, persists the rotated refresh token, retries the original request, clears the session only on genuine failure.
+- **P1-4** Invoice modal remounts per record (`key`-remount, parity with payment/purchase pages).
+- **P1-5** Accounting service + serializer money math is Decimal with exact equality (float tolerance removed).
+- **P1-6** New append-only `core.AuditLog` + `AuditService` writes tenant/actor-scoped, immutable, sanitized audit rows from every service-layer mutation.
+- **P1-7** Shared `TenantScopedPermission` base enforces ACTIVE user + ACTIVE tenant + membership on every endpoint; JWT auth rejects disabled users; `/tenants/switch/` refuses non-ACTIVE tenants.
 
 ## Generated Artifacts
 
-- `specs/012-inventory/spec.md` — Feature specification (implemented)
-- `specs/012-inventory/plan.md` — Implementation plan (implemented)
-- `specs/012-inventory/research.md` — Technical research, incl. the 20-question decision table (implemented)
-- `specs/012-inventory/data-model.md` — Data model (implemented)
-- `specs/012-inventory/contracts/inventory-api.md` — Inventory API contracts (implemented)
-- `specs/012-inventory/quickstart.md` — Validation scenarios (verified by `test_stock_ledger_tie.py`)
-- `specs/012-inventory/tasks.md` — Implementation tasks (all complete)
-- `specs/012-inventory/checklists/requirements.md` — Spec quality checklist (verified at close-out)
-- `specs/012-inventory/report.md` — Final implementation report
+- `docs/audits/production-hardening-report-001.md` — Authoritative hardening report (baseline, findings, files, tests, regression, readiness)
+- `specs/012-hardening/spec.md` — Hardening specification (implemented)
+- `specs/012-hardening/plan.md` — Implementation plan, phases H1–H7 (implemented)
+- `specs/012-hardening/tasks.md` — Implementation tasks (all complete)
+- `specs/012-hardening/data-model.md` — `core_audit_log` data model + immutability notes
+- `specs/012-hardening/quickstart.md` — Manual verification (P1-3/P1-4 frontend; no UI test harness)
+- `specs/012-hardening/checklists/requirements.md` — Spec quality checklist (verified at close-out)
+- `specs/012-hardening/report.md` — Implementation report
 
 ## Key Decisions (locked in the plan)
 
-- New `apps/inventory` app (must be added to INSTALLED_APPS) with `Product`, `Warehouse`, `InventorySettings`, `StockBalance`, `StockMovement`, `StockAdjustment` (+ line).
-- Moving weighted average per `(product, warehouse)`; `value` is the authoritative aggregate, `moving_avg_cost = value / quantity` is a display snapshot; invariant `balance == Σ movements` asserted in tests.
-- One default `Warehouse` created lazily per tenant; multi-warehouse transfers deferred (schema already keyed on warehouse).
-- Additive nullable `product` FKs on `PurchaseInvoiceLine` (purchases migration `0002`) and `SalesInvoiceLine` (sales migration `0004`); no changes to `apps/accounting`, `SalesSettings`, or `PurchaseSettings`.
-- Purchase posting leg split: Dr Inventory (product-line nets after proportional discount) + Dr Expense (service-line nets) + Dr Input VAT + Cr AP — sums to `subtotal − discount + tax` = total.
-- Sales posting adds the self-balancing Dr COGS / Cr Inventory pair (qty × weighted-average cost) to the existing AR/Revenue/VAT entry.
-- Negative stock hard-rejected at posting (row-locked, atomic, zero artifacts on failure). Adjustments `Draft → Posted` with balanced `ADJ-INV-{number}` JE at current avg cost.
-- Permissions: `CanViewInventory` / `CanManageInventory` (products + adjustments incl. posting) / `CanConfigureInventory`; no separate `CanPost*` (stock effects ride the source document's permission — documented deviation).
-- Deferred (per brief): transfers, batch/lot/serial, expiry, returns/credit notes, manufacturing/BOM, forecasting, FIFO/standard costing, auto-numbering.
+- Report/ledger inclusion requires `posted=True` unconditionally (no permission-gated draft inclusion this pass).
+- Audit writes happen exclusively in the service layer via `AuditService.record`; no view-layer audit logic; sensitive keys recursively scrubbed (password/refresh/access/token/secret/api_key/session).
+- Status enforcement centralized: `TenantScopedPermission` (core) is the single membership + ACTIVE-tenant gate; `BlacklistCheckingJWTAuth` rejects non-ACTIVE users on valid tokens (no reliance on token expiry).
+- No token-storage redesign (HttpOnly cookies deferred to AUD-009/P2); no DB-level audit trigger (app-layer guards + no write endpoints; documented limitation).
+- Backend half of P1-1/P1-2/P1-5 + Journal UI posting landed in commit `ec5563a` (18 integrity tests); this pass delivered P1-3/P1-4/P1-6/P1-7 and verified all seven end-to-end.
 
 ## Next Steps (after review)
 
-- Review the plan, then either adjust scope or proceed to implementation (Phases 1–7 in plan.md). Do not push or deploy; commit artifacts only via the auto-commit hook. Implementation is complete and committed; awaiting review.
+- Review the hardening report and `specs/012-hardening/*`. Remaining P2/P3 items (AUD-008…AUD-030, e.g. bcrypt, Celery, HttpOnly tokens, pagination) are out of scope and documented for future phases. Do not push or deploy; commit via the auto-commit hook only.
 
 ## Quick Reference
 
-- Backend tests: `cd backend && py -m pytest apps/ -q` (current baseline 223 passing + 52-test inventory suite → 274 passed, 1 postgres-only skip; DJANGO_SETTINGS_MODULE=config.settings.test)
-- Planned inventory URLs: `api/v1/inventory/products/`, `api/v1/inventory/warehouses/`, `api/v1/inventory/stock-balances/`, `api/v1/inventory/stock-movements/`, `api/v1/inventory/adjustments/` (+ `{id}/post_adjustment/`), `api/v1/inventory/settings/current/`
-- Existing sales/purchases URLs unchanged; invoice line payloads gain additive optional `product_id`
-- Frontend: `npm run build` and `npm run lint` in `frontend/` (16 pre-existing problems in earlier feature files; new files must stay clean)
+- Backend tests: `cd backend && $env:DJANGO_SETTINGS_MODULE="config.settings.test"; py -m pytest apps/ -q` → 324 passed, 1 postgres-only skip (274 baseline + 18 financial-integrity + 4 token-rotation + 10 status-enforcement + 17 audit-trail + 52-inventory + 223 pre-existing)
+- New backend pieces: `apps/core/audit.py`, `apps/core/permissions.py`, `core.AuditLog` (migration `core/0002_auditlog`), `AuditService.record(...)` wired into accounts/accounting/sales/purchases/inventory services
+- Frontend changed files: `src/services/api.js` (single-flight rotated refresh), `src/pages/sales/InvoicesPage.jsx` (modal remount `key`)
+- Migrations: `py manage.py makemigrations --check --dry-run` → "No changes detected"
+- Frontend: `npm run build` clean; `npm run lint` still exactly 16 pre-existing problems (zero new)
 - Docker Compose: `docker compose -f infra/docker-compose.yml up`
 <!-- SPECKIT END -->

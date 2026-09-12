@@ -7,6 +7,7 @@ from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.core.models import Tenant
+from apps.core.audit import AuditService
 from apps.accounts.models import User, Membership, BlacklistedToken, Invitation
 
 
@@ -26,6 +27,20 @@ class AuthService:
         refresh = RefreshToken()
         refresh["user_id"] = str(user.id)
         refresh["tenant_id"] = str(tenant.id)
+        AuditService.record(
+            action="auth.register",
+            tenant_id=tenant.id,
+            target=user,
+            actor=user,
+            after={
+                "email": user.email,
+                "display_name": user.display_name,
+                "status": user.status,
+                "tenant_id": str(tenant.id),
+                "tenant_name": tenant.name,
+                "role": Membership.Role.ADMIN,
+            },
+        )
         return {
             "access": str(refresh.access_token),
             "refresh": str(refresh),
@@ -134,6 +149,16 @@ class InvitationService:
             tenant_id=tenant_id,
             expires_at=timezone.now() + dt_mod.timedelta(days=7),
         )
+        AuditService.record(
+            action="invitation.create",
+            tenant_id=tenant_id,
+            target=invitation,
+            after={
+                "email": invitation.email,
+                "role": invitation.role,
+                "expires_at": invitation.expires_at.isoformat(),
+            },
+        )
         return invitation
 
     def validate_token(self, token):
@@ -159,16 +184,37 @@ class InvitationService:
         )
         invitation.accepted_at = timezone.now()
         invitation.save(update_fields=["accepted_at"])
+        AuditService.record(
+            action="invitation.accept",
+            tenant_id=invitation.tenant_id,
+            target=invitation,
+            actor=user,
+            after={
+                "email": invitation.email,
+                "role": invitation.role,
+                "tenant_id": str(invitation.tenant_id),
+                "accepted_at": invitation.accepted_at.isoformat(),
+            },
+        )
         return membership, None
 
     @transaction.atomic
     def cancel_invitation(self, invitation_id, tenant_id):
-        deleted_count = Invitation.objects.for_tenant(tenant_id).filter(
-            id=invitation_id,
-            accepted_at__isnull=True,
-        ).delete()[0]
-        if deleted_count == 0:
+        invitation = (
+            Invitation.objects.for_tenant(tenant_id)
+            .filter(id=invitation_id, accepted_at__isnull=True)
+            .first()
+        )
+        if invitation is None:
             raise ValueError("Invitation not found.")
+        before = {"email": invitation.email, "role": invitation.role}
+        invitation.delete()
+        AuditService.record(
+            action="invitation.cancel",
+            tenant_id=tenant_id,
+            target=invitation,
+            before=before,
+        )
 
 
 class TeamService:
@@ -188,8 +234,16 @@ class TeamService:
         membership = Membership.objects.for_tenant(tenant_id).select_for_update().get(
             user_id=member_user_id
         )
+        old_role = membership.role
         membership.role = new_role
         membership.save(update_fields=["role"])
+        AuditService.record(
+            action="member.role_change",
+            tenant_id=tenant_id,
+            target=membership,
+            before={"user_id": str(membership.user_id), "role": old_role},
+            after={"user_id": str(membership.user_id), "role": new_role},
+        )
         return membership
 
     @transaction.atomic
@@ -201,8 +255,20 @@ class TeamService:
             raise ValueError(
                 "Cannot remove the last admin. Assign another admin first."
             )
-        deleted_count = Membership.objects.for_tenant(tenant_id).filter(
+        membership = Membership.objects.for_tenant(tenant_id).filter(
             user_id=member_user_id
-        ).delete()[0]
-        if deleted_count == 0:
+        ).first()
+        if membership is None:
             raise ValueError("Member not found.")
+        before = {
+            "user_id": str(membership.user_id),
+            "email": membership.user.email,
+            "role": membership.role,
+        }
+        membership.delete()
+        AuditService.record(
+            action="member.remove",
+            tenant_id=tenant_id,
+            target=membership,
+            before=before,
+        )

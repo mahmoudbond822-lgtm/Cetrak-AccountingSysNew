@@ -16,6 +16,7 @@ from apps.accounts.serializers import LogoutSerializer, InvitationSerializer, In
 from apps.accounts.services import AuthService, InvitationService, TeamService
 from apps.accounts.models import BlacklistedToken, Membership, User
 from apps.accounts.permissions import IsAdminUser
+from apps.core.models import Tenant
 
 
 @api_view(["POST"])
@@ -299,6 +300,12 @@ def tenant_switch_view(request, tenant_id):
         return Response(
             {"detail": "Tenant not found or no membership."},
             status=status.HTTP_404_NOT_FOUND,
+        )
+
+    if membership.tenant.status != Tenant.Status.ACTIVE:
+        return Response(
+            {"detail": "Tenant is not active. Contact your administrator."},
+            status=status.HTTP_403_FORBIDDEN,
         )
 
     old_jti = request.auth.get("jti") if request.auth else None

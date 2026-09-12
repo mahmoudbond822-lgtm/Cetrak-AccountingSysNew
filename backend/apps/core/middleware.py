@@ -6,6 +6,7 @@ from django.http import HttpResponseForbidden
 from django.utils.deprecation import MiddlewareMixin
 
 from apps.accounts.models import Membership
+from apps.core.audit import clear_request_context
 
 ALLOWED_PATHS = {
     "/api/v1/auth/register/",
@@ -32,6 +33,7 @@ def _parse_jwt_payload(auth_header):
 
 class TenantResolutionMiddleware(MiddlewareMixin):
     def process_request(self, request):
+        clear_request_context()
         tenant_id = None
 
         payload = _parse_jwt_payload(request.META.get("HTTP_AUTHORIZATION"))
@@ -74,3 +76,7 @@ class TenantResolutionMiddleware(MiddlewareMixin):
                     '{"detail": "You do not have access to this tenant."}',
                     content_type="application/json",
                 )
+
+    def process_response(self, request, response):
+        clear_request_context()
+        return response

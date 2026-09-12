@@ -5,6 +5,7 @@ from django.db import IntegrityError
 from django.utils import timezone
 
 from apps.accounting.models import Account, JournalEntry, JournalEntryLine
+from apps.core.audit import AuditService
 from apps.inventory.models import (
     InventorySettings,
     Product,
@@ -45,6 +46,12 @@ class InventorySettingsService:
 
     def update(self, **mappings):
         settings = self.get()
+        before = {
+            "inventory_account_id": str(settings.inventory_account_id) if settings.inventory_account_id else None,
+            "cogs_account_id": str(settings.cogs_account_id) if settings.cogs_account_id else None,
+            "adjustments_account_id": str(settings.adjustments_account_id) if settings.adjustments_account_id else None,
+            "default_warehouse_id": str(settings.default_warehouse_id) if settings.default_warehouse_id else None,
+        }
         for field, value in mappings.items():
             if field == "default_warehouse":
                 if value is None:
@@ -85,6 +92,18 @@ class InventorySettingsService:
                 )
             setattr(settings, field, value)
         settings.save()
+        AuditService.record(
+            action="settings.inventory.update",
+            tenant_id=self.tenant_id,
+            target=settings,
+            before=before,
+            after={
+                "inventory_account_id": str(settings.inventory_account_id) if settings.inventory_account_id else None,
+                "cogs_account_id": str(settings.cogs_account_id) if settings.cogs_account_id else None,
+                "adjustments_account_id": str(settings.adjustments_account_id) if settings.adjustments_account_id else None,
+                "default_warehouse_id": str(settings.default_warehouse_id) if settings.default_warehouse_id else None,
+            },
+        )
         return settings
 
 
@@ -305,12 +324,36 @@ class StockAdjustmentService:
                     )
         except IntegrityError:
             raise ValueError("Adjustment number already exists.")
+        AuditService.record(
+            action="inventory.adjustment.create",
+            tenant_id=self.tenant_id,
+            target=adjustment,
+            after={
+                "number": adjustment.number,
+                "adjustment_date": str(adjustment.adjustment_date),
+                "reason": adjustment.reason,
+                "status": adjustment.status,
+                "lines": [
+                    {
+                        "product_id": str(line.product_id),
+                        "quantity": str(line.quantity),
+                    }
+                    for line in adjustment.lines.all()
+                ],
+            },
+        )
         return adjustment
 
     def update_draft(self, adjustment_id, *, number=None,
                      adjustment_date=None, reason=None, notes=_UNSET,
                      lines_data=None):
         adjustment = self._get_adjustment(adjustment_id)
+        before = {
+            "number": adjustment.number,
+            "adjustment_date": str(adjustment.adjustment_date),
+            "reason": adjustment.reason,
+            "status": adjustment.status,
+        }
         if adjustment.status != StockAdjustment.Status.DRAFT:
             raise ValueError("Only draft adjustments can be edited.")
         if number is not None:
@@ -349,13 +392,43 @@ class StockAdjustmentService:
                     adjustment.save()
             except IntegrityError:
                 raise ValueError("Adjustment number already exists.")
+        AuditService.record(
+            action="inventory.adjustment.update",
+            tenant_id=self.tenant_id,
+            target=adjustment,
+            before=before,
+            after={
+                "number": adjustment.number,
+                "adjustment_date": str(adjustment.adjustment_date),
+                "reason": adjustment.reason,
+                "status": adjustment.status,
+                "lines": [
+                    {
+                        "product_id": str(line.product_id),
+                        "quantity": str(line.quantity),
+                    }
+                    for line in adjustment.lines.all()
+                ],
+            },
+        )
         return adjustment
 
     def delete_draft(self, adjustment_id):
         adjustment = self._get_adjustment(adjustment_id)
         if adjustment.status != StockAdjustment.Status.DRAFT:
             raise ValueError("Only draft adjustments can be deleted.")
+        before = {
+            "number": adjustment.number,
+            "reason": adjustment.reason,
+            "status": adjustment.status,
+        }
         adjustment.delete()
+        AuditService.record(
+            action="inventory.adjustment.delete",
+            tenant_id=self.tenant_id,
+            target=adjustment,
+            before=before,
+        )
 
     def post_adjustment(self, adjustment_id):
         adjustment = self._get_adjustment(adjustment_id)
@@ -446,6 +519,17 @@ class StockAdjustmentService:
                 adjustment.save(update_fields=[
                     "posted_journal", "status", "posted_at", "updated_at",
                 ])
+                AuditService.record(
+                    action="inventory.adjustment.post",
+                    tenant_id=self.tenant_id,
+                    target=adjustment,
+                    before={"status": StockAdjustment.Status.DRAFT},
+                    after={
+                        "status": StockAdjustment.Status.POSTED,
+                        "number": adjustment.number,
+                        "journal_reference": reference,
+                    },
+                )
         except IntegrityError:
             raise ValueError("Journal entry reference already exists.")
         return adjustment
