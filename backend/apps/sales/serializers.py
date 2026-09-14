@@ -1,4 +1,4 @@
-from rest_framework import serializers
+﻿from rest_framework import serializers
 
 from apps.accounting.serializers import TenantScopedAccountField
 from apps.inventory.serializers import TenantScopedProductField
@@ -43,9 +43,7 @@ class CustomerSerializer(serializers.ModelSerializer):
 
     def validate_code(self, value):
         value = (value or "").strip()
-        if not value:
-            raise serializers.ValidationError("Customer code is required.")
-        return value
+        return value or None
 
     def validate_name(self, value):
         value = (value or "").strip()

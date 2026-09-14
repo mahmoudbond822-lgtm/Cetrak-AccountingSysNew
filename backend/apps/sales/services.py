@@ -821,3 +821,105 @@ class PaymentService:
         except IntegrityError:
             raise ValueError("Journal entry reference already exists.")
         return payment
+class CustomerService:
+    def __init__(self, tenant_id):
+        self.tenant_id = tenant_id
+
+    @staticmethod
+    def _normalize_code(value):
+        return (value or "").strip()
+
+    @staticmethod
+    def _suffix(code):
+        import re
+        match = re.search(r"(\d+)\s*$", code or "")
+        return int(match.group(1)) if match else 0
+
+    def mint_code(self):
+        prefix = "CUS"
+        qs = Customer.objects.for_tenant(self.tenant_id)
+        codes = list(qs.exclude(code="").values_list("code", flat=True))
+        suffixes = [self._suffix(c) for c in codes if self._suffix(c) > 0]
+        next_num = (max(suffixes) if suffixes else 0) + 1
+        candidate = f"{prefix}-{next_num}"
+        taken = set(codes)
+        while candidate in taken:
+            next_num += 1
+            candidate = f"{prefix}-{next_num}"
+        return candidate
+
+
+class CustomerService:
+    def __init__(self, tenant_id):
+        self.tenant_id = tenant_id
+
+    def create(self, *, name, email=None, phone=None, address=None,
+               tax_id=None, code=None):
+        from apps.sales.models import Customer
+
+        name = (name or "").strip()
+        if not name:
+            raise ValueError("Customer name is required.")
+        code = (code or "").strip()
+        if code:
+            try:
+                return Customer.objects.create(
+                    tenant_id=self.tenant_id,
+                    code=code,
+                    name=name,
+                    email=(email or "").strip() or None,
+                    phone=(phone or "").strip() or None,
+                    address=(address or "").strip() or None,
+                    tax_id=(tax_id or "").strip() or None,
+                )
+            except IntegrityError:
+                raise ValueError("Customer code already exists in this tenant.")
+        start = 1
+        prefix = "CUS"
+        for _ in range(100):
+            candidate = f"{prefix}-{start:04d}"
+            if not Customer.objects.filter(
+                tenant_id=self.tenant_id, code=candidate
+            ).exists():
+                break
+            start += 1
+        else:
+            raise ValueError("Unable to generate a unique customer code.")
+        return Customer.objects.create(
+            tenant_id=self.tenant_id,
+            code=candidate,
+            name=name,
+            email=(email or "").strip() or None,
+            phone=(phone or "").strip() or None,
+            address=(address or "").strip() or None,
+            tax_id=(tax_id or "").strip() or None,
+        )
+
+    def update(self, customer_id, *, name=None, email=None,
+               phone=None, address=None, tax_id=None,
+               is_active=None, code=None):
+        from apps.sales.models import Customer
+        try:
+            customer = Customer.objects.for_tenant(self.tenant_id).get(
+                pk=customer_id
+            )
+        except Customer.DoesNotExist:
+            raise ValueError("Customer not found.")
+        if name is not None:
+            name = (name or "").strip()
+            if not name:
+                raise ValueError("Customer name is required.")
+            customer.name = name
+        for field in ("email", "phone", "address", "tax_id"):
+            value = locals().get(field)
+            if value is not None:
+                setattr(customer, field, (value or "").strip() or None)
+        if code is not None:
+            code = (code or "").strip()
+            if code:
+                customer.code = code
+        if is_active is not None:
+            customer.is_active = bool(is_active)
+        with transaction.atomic():
+            customer.save()
+        return customer

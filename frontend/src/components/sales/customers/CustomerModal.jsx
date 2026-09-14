@@ -1,19 +1,12 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import Modal from '../../shared/Modal'
 import Button from '../../shared/Button'
 import Input from '../../shared/Input'
 import { salesService } from '../../../services/salesService'
 
-const fieldStyle = { display: 'flex', flexDirection: 'column', gap: '0.375rem', marginBottom: '1rem' }
+const fieldStyle = { display: 'flex', flexDirection: 'column', gap: '0.375rem', marginBottom: '0.75rem' }
 
-const emptyForm = {
-  code: '',
-  name: '',
-  email: '',
-  phone: '',
-  address: '',
-  tax_id: '',
-}
+const emptyForm = { code: '', name: '', email: '', phone: '', address: '', tax_id: '' }
 
 export default function CustomerModal({ open, onClose, customer, onSaved }) {
   const [form, setForm] = useState(customer ? {
@@ -36,7 +29,6 @@ export default function CustomerModal({ open, onClose, customer, onSaved }) {
     setSaving(true)
     setFormErrors({})
     const payload = {
-      code: form.code,
       name: form.name,
       email: form.email || null,
       phone: form.phone || null,
@@ -67,20 +59,22 @@ export default function CustomerModal({ open, onClose, customer, onSaved }) {
     <Modal
       open={open}
       onClose={onClose}
-      title={customer ? 'Edit Customer' : 'Create Customer'}
+      title={customer ? 'Edit Customer' : 'Add Customer'}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
           <Button variant="primary" onClick={handleSubmit} disabled={saving}>
-            {saving ? 'Saving...' : customer ? 'Update' : 'Create'}
+            {saving ? 'Saving...' : customer ? 'Update' : 'Add Customer'}
           </Button>
         </>
       }
     >
       <form onSubmit={handleSubmit}>
-        <div style={fieldStyle}>
-          <Input label="Code *" name="code" value={form.code} onChange={handleChange} error={formErrors.code} required />
-        </div>
+        {customer && (
+          <div style={fieldStyle}>
+            <Input label="Code" value={form.code} readOnly />
+          </div>
+        )}
         <div style={fieldStyle}>
           <Input label="Name *" name="name" value={form.name} onChange={handleChange} error={formErrors.name} required />
         </div>
@@ -91,10 +85,10 @@ export default function CustomerModal({ open, onClose, customer, onSaved }) {
           <Input label="Phone" name="phone" value={form.phone} onChange={handleChange} error={formErrors.phone} />
         </div>
         <div style={fieldStyle}>
-          <Input label="Tax Identifier" name="tax_id" value={form.tax_id} onChange={handleChange} error={formErrors.tax_id} />
+          <Input label="Address" name="address" value={form.address} onChange={handleChange} error={formErrors.address} />
         </div>
         <div style={fieldStyle}>
-          <Input label="Address" name="address" value={form.address} onChange={handleChange} error={formErrors.address} />
+          <Input label="Tax Identifier" name="tax_id" value={form.tax_id} onChange={handleChange} error={formErrors.tax_id} />
         </div>
         {formErrors.general && (
           <div style={{ padding: '0.5rem', background: '#FFF3F3', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.8rem' }}>{formErrors.general}</div>
