@@ -19,6 +19,7 @@ from apps.sales.serializers import (
     SalesSettingsSerializer,
 )
 from apps.sales.services import (
+    CustomerService,
     PaymentService,
     SalesInvoiceService,
     SalesSettingsService,
@@ -42,15 +43,19 @@ class CustomerViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        code = data.get("code")
         try:
-            customer, created = models.Customer.objects.get_or_create(
-                tenant_id=request.tenant_id,
-                code=data["code"],
-                defaults={k: v for k, v in data.items() if k != "code"},
+            customer, created = CustomerService(request.tenant_id).create_with_flag(
+                name=data["name"],
+                email=data.get("email"),
+                phone=data.get("phone"),
+                address=data.get("address"),
+                tax_id=data.get("tax_id"),
+                code=code,
             )
-        except IntegrityError:
+        except ValueError as exc:
             return Response(
-                {"detail": "Customer code already exists."},
+                {"detail": str(exc)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         return Response(

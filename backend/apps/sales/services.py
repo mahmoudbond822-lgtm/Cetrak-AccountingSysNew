@@ -853,6 +853,50 @@ class CustomerService:
     def __init__(self, tenant_id):
         self.tenant_id = tenant_id
 
+    def create_with_flag(self, *, name, email=None, phone=None, address=None,
+                         tax_id=None, code=None):
+        from apps.sales.models import Customer
+
+        name = (name or "").strip()
+        if not name:
+            raise ValueError("Customer name is required.")
+        code = (code or "").strip()
+        if code:
+            return Customer.objects.get_or_create(
+                tenant_id=self.tenant_id,
+                code=code,
+                defaults={
+                    "name": name,
+                    "email": (email or "").strip() or None,
+                    "phone": (phone or "").strip() or None,
+                    "address": (address or "").strip() or None,
+                    "tax_id": (tax_id or "").strip() or None,
+                },
+            )
+        start = 1
+        prefix = "CUS"
+        for _ in range(100):
+            candidate = f"{prefix}-{start:04d}"
+            if not Customer.objects.filter(
+                tenant_id=self.tenant_id, code=candidate
+            ).exists():
+                break
+            start += 1
+        else:
+            raise ValueError("Unable to generate a unique customer code.")
+        return (
+            Customer.objects.create(
+                tenant_id=self.tenant_id,
+                code=candidate,
+                name=name,
+                email=(email or "").strip() or None,
+                phone=(phone or "").strip() or None,
+                address=(address or "").strip() or None,
+                tax_id=(tax_id or "").strip() or None,
+            ),
+            True,
+        )
+
     def create(self, *, name, email=None, phone=None, address=None,
                tax_id=None, code=None):
         from apps.sales.models import Customer
@@ -862,18 +906,18 @@ class CustomerService:
             raise ValueError("Customer name is required.")
         code = (code or "").strip()
         if code:
-            try:
-                return Customer.objects.create(
-                    tenant_id=self.tenant_id,
-                    code=code,
-                    name=name,
-                    email=(email or "").strip() or None,
-                    phone=(phone or "").strip() or None,
-                    address=(address or "").strip() or None,
-                    tax_id=(tax_id or "").strip() or None,
-                )
-            except IntegrityError:
-                raise ValueError("Customer code already exists in this tenant.")
+            customer, created = Customer.objects.get_or_create(
+                tenant_id=self.tenant_id,
+                code=code,
+                defaults={
+                    "name": name,
+                    "email": (email or "").strip() or None,
+                    "phone": (phone or "").strip() or None,
+                    "address": (address or "").strip() or None,
+                    "tax_id": (tax_id or "").strip() or None,
+                },
+            )
+            return customer
         start = 1
         prefix = "CUS"
         for _ in range(100):

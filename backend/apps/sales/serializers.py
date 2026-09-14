@@ -40,6 +40,9 @@ class CustomerSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+        extra_kwargs = {
+            "code": {"required": False, "allow_blank": True},
+        }
 
     def validate_code(self, value):
         value = (value or "").strip()
