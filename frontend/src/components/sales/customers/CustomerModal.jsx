@@ -8,7 +8,7 @@ const fieldStyle = { display: 'flex', flexDirection: 'column', gap: '0.375rem', 
 
 const emptyForm = { code: '', name: '', email: '', phone: '', address: '', tax_id: '' }
 
-export default function CustomerModal({ open, onClose, customer, onSaved }) {
+export default function CustomerModal({ open, onClose, customer, nextCode, onSaved }) {
   const [form, setForm] = useState(customer ? {
     code: customer.code || '',
     name: customer.name || '',
@@ -38,10 +38,11 @@ export default function CustomerModal({ open, onClose, customer, onSaved }) {
     try {
       if (customer) {
         await salesService.updateCustomer(customer.id, payload)
+        onSaved()
       } else {
-        await salesService.createCustomer(payload)
+        const res = await salesService.createCustomer(payload)
+        onSaved(res?.data)
       }
-      onSaved()
       onClose()
     } catch (err) {
       const data = err.response?.data
@@ -73,6 +74,11 @@ export default function CustomerModal({ open, onClose, customer, onSaved }) {
         {customer && (
           <div style={fieldStyle}>
             <Input label="Code" value={form.code} readOnly />
+          </div>
+        )}
+        {!customer && (
+          <div style={fieldStyle}>
+            <Input label="Code (auto-assigned)" value={nextCode || 'CUS-0001'} readOnly />
           </div>
         )}
         <div style={fieldStyle}>
