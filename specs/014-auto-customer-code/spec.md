@@ -1,22 +1,16 @@
 # Feature Specification: Auto Customer Code
 
-**Feature Branch**: `013-auto-customer-code`
+**Feature Branch**: `014-auto-customer-code`
 
-**Created**: 2026-09-14
+**Created**: 2026-09-15
 
 **Status**: Draft
 
-**Input**: User description: "{\"code\":[\"This field is required.\"]} add a code in create customer dialog as a field not enabled with CUS-0001 and add 1 every saving customer"
-
-## Clarifications
-
-### Session 2026-09-14
-
-- Q: When the displayed next code is taken by someone else before save (concurrent creators seeing the same preview), what happens? → A: Option A — save assigns the next free code at save time; if the preview was taken, the save still succeeds with the next free code plus a note showing the assigned code.
+**Input**: User description: "{\"code\":[\"This field is required.\"]} add a customer code in create customer dialog as a field not enabled with CUS-0001 and add 1 every saving customer"
 
 ## User Scenarios & Testing *(mandatory)*
 
-### User Story 1 - Create a customer with a visible auto code (Priority: P1)
+### User Story 1 - Create a customer with an auto-generated code (Priority: P1)
 
 An accountant opens Sales → Customers → Create Customer. The dialog shows a Code field that is visible but not editable (disabled/read-only) with a preview value starting at `CUS-0001`. The user fills in name and contact details, saves, and the new customer appears in the list with that code. Opening Create again shows the next code (`CUS-0002`), incrementing by 1 for every saved customer.
 
@@ -30,29 +24,25 @@ An accountant opens Sales → Customers → Create Customer. The dialog shows a 
 2. **Given** the create dialog with the shown code, **When** the user saves a valid customer, **Then** creation succeeds with no "code required" error and the saved customer has exactly the shown code.
 3. **Given** one saved customer (`CUS-0001`), **When** the user opens Create Customer again, **Then** the Code field shows `CUS-0002`.
 
----
+### User Story 2 - Codes increment by 1 per saved customer (Priority: P2)
 
-### User Story 2 - Codes stay unique per business (Priority: P2)
+Each time a customer is saved, the system automatically increments the code by 1 from the highest existing code for that business. This ensures sequential, gap-free numbering within each business.
 
-Codes must never collide within one business, even when customers are created rapidly or when older customers already carry manually entered codes.
+**Why this priority**: Guarantees that every new customer gets a unique, incrementing code without manual entry, eliminating the "code required" error entirely.
 
-**Why this priority**: Duplicate codes would corrupt invoices, receipts, and ledger references. Uniqueness is the safety property behind the convenience.
-
-**Independent Test**: Can be fully tested by creating several customers in a row and confirming every code is distinct.
+**Independent Test**: Can be fully tested by creating several customers in a row and confirming every code increments by exactly 1 from the previous.
 
 **Acceptance Scenarios**:
 
-1. **Given** existing customers, **When** new customers are created, **Then** each new code is unique within the business and increments from the highest existing code.
-2. **Given** a code value that already exists, **When** the next auto code would collide with it, **Then** the system skips to the next free value instead of saving a duplicate.
-3. **Given** two users viewing the same preview (e.g. both see `CUS-0002`), **When** both save, **Then** the first save gets `CUS-0002` and the second save still succeeds with the next free code (e.g. `CUS-0003`) plus a note showing the assigned code.
+1. **Given** one saved customer (`CUS-0001`), **When** the user saves a second customer, **Then** the second customer gets `CUS-0002`.
+2. **Given** five saved customers (CUS-0001 through CUS-0005), **When** a sixth customer is saved, **Then** the sixth customer gets `CUS-0006`.
+3. **Given** gaps from previously deleted customers, **When** a new customer is saved, **Then** the code assigns the next free sequential value (gaps are not reused).
 
----
+### User Story 3 - Code is preserved and read-only on edit (Priority: P3)
 
-### User Story 3 - Code is read-only after creation (Priority: P3)
+Once a customer exists, its code is shown but can never be edited or blanked through the edit dialog. This prevents accidental drift that would break historical references.
 
-Once a customer exists, its code is shown but can never be edited or blanked through the edit dialog.
-
-**Why this priority**: Prevents accidental drift that would break historical references. Lower priority than creation because it only guards already-saved data.
+**Why this priority**: Protects already-saved data integrity. Lower priority than creation because it only guards existing records, but still essential for data consistency.
 
 **Independent Test**: Can be fully tested by editing an existing customer's name and confirming the code is unchanged.
 
@@ -104,3 +94,4 @@ Once a customer exists, its code is shown but can never be edited or blanked thr
 - Numbering is monotonic and never reused, even if a customer is deleted.
 - Only customer creation changes; vendor, account, and invoice numbering behavior is out of scope.
 - Existing customer codes are never migrated or altered.
+- Tenant isolation ensures each business's code sequence is independent and never crosses into another business's codes.

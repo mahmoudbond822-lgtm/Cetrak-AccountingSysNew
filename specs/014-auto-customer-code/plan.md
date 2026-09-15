@@ -1,8 +1,8 @@
-﻿# Implementation Plan: Auto Customer Code
+# Implementation Plan: Auto Customer Code
 
-**Branch**: `013-auto-customer-code` | **Date**: 2026-09-14 | **Spec**: [spec.md](./spec.md)
+**Branch**: `014-auto-customer-code` | **Date**: 2026-09-15 | **Spec**: [spec.md](./spec.md)
 
-**Input**: Feature specification from `/specs/013-auto-customer-code/spec.md` (plus clarification session 2026-09-14: dialog preview is a non-binding hint; save assigns the next free code authoritatively)
+**Input**: Feature specification from `/specs/014-auto-customer-code/spec.md`
 
 ## Summary
 
@@ -50,7 +50,7 @@ Post-design re-check: no new components, no schema change, no new endpoints — 
 ### Documentation (this feature)
 
 ```text
-specs/013-auto-customer-code/
+specs/014-auto-customer-code/
 ├── plan.md              # This file (/speckit.plan command output)
 ├── research.md          # Phase 0 output (/speckit.plan command)
 ├── data-model.md        # Phase 1 output (/speckit.plan command)

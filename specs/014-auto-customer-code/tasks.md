@@ -1,6 +1,6 @@
-﻿# Tasks: Auto Customer Code
+# Tasks: Auto Customer Code
 
-**Input**: Design documents from `/specs/013-auto-customer-code/`
+**Input**: Design documents from `/specs/014-auto-customer-code/`
 
 **Prerequisites**: plan.md (required), spec.md (required for user stories), research.md, data-model.md, contracts/
 
@@ -44,7 +44,7 @@
 
 ---
 
-## Phase 3: User Story 1 - Create a customer with a visible auto code (Priority: P1) 🎯 MVP
+## Phase 3: User Story 1 - Create a customer with an auto-generated code (Priority: P1) 🎯 MVP
 
 **Goal**: Create dialog shows a disabled Code preview (`CUS-0001`, +1 per saved customer); saving without typing a code succeeds with the shown (or next free) code and no "code required" error
 
@@ -52,21 +52,21 @@
 
 ### Implementation for User Story 1
 
-- [ ] T006 [P] [US1] Contract check: POST without code returns 201 with minted code per specs/013-auto-customer-code/contracts/customer-create.md (run backend/apps/sales/tests/test_customer_api_create_without_code.py)
+- [ ] T006 [P] [US1] Contract check: POST without code returns 201 with minted code per specs/014-auto-customer-code/contracts/customer-create.md (run backend/apps/sales/tests/test_customer_api_create_without_code.py)
 - [ ] T007 [P] [US1] Add disabled Code preview showing the next code in create mode in frontend/src/components/sales/customers/CustomerModal.jsx
 - [ ] T008 [US1] Keep code out of create and update payloads in frontend/src/components/sales/customers/CustomerModal.jsx (depends on T007)
 - [ ] T009 [US1] Surface assigned-code note when save returns a code different from the preview in frontend/src/components/sales/customers/CustomerModal.jsx (depends on T007)
-- [ ] T010 [US1] Manual browser walkthrough per specs/013-auto-customer-code/quickstart.md (preview → save → list → reopen shows next)
+- [ ] T010 [US1] Manual browser walkthrough per specs/014-auto-customer-code/quickstart.md (preview → save → list → reopen shows next)
 
 **Checkpoint**: At this point, User Story 1 should be fully functional and testable independently
 
 ---
 
-## Phase 4: User Story 2 - Codes stay unique per business (Priority: P2)
+## Phase 4: User Story 2 - Codes increment by 1 per saved customer (Priority: P2)
 
-**Goal**: Every assigned code is unique within its business; collisions are skipped, sequences are per-business independent
+**Goal**: Every saved customer gets the next sequential code (+1 from the highest existing code); collisions are skipped, sequences are per-business independent, gaps never reused
 
-**Independent Test**: Create several customers in a row → all codes distinct; two viewers of the same preview both save successfully with different codes
+**Independent Test**: Create several customers in a row → codes run CUS-0001, CUS-0002, … with +1 each; two viewers of the same preview both save successfully with different codes
 
 ### Implementation for User Story 2
 
@@ -77,7 +77,7 @@
 
 ---
 
-## Phase 5: User Story 3 - Code is read-only after creation (Priority: P3)
+## Phase 5: User Story 3 - Code is preserved and read-only on edit (Priority: P3)
 
 **Goal**: Edit dialog shows code read-only; edits never blank, regenerate, or change it
 
@@ -94,11 +94,11 @@
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-**Purpose**: Full verification and result recording
+**Purpose**: Full verification with no regressions
 
-- [ ] T015 Run full backend suite green in backend/ (`py -m pytest apps/ -q`, expect 375 passed / 1 skipped baseline or better)
+- [ ] T015 Run full backend suite green in backend/ (`py -m pytest apps/ -q`, expect no regressions vs baseline)
 - [ ] T016 [P] Run frontend build plus lint with zero new problems in frontend/
-- [ ] T017 Confirm migration check clean and record results in specs/013-auto-customer-code/report.md (`py manage.py makemigrations --check --dry-run`)
+- [ ] T017 Confirm migration check clean in backend/ (`py manage.py makemigrations --check --dry-run`, expect "No changes detected")
 
 ---
 
