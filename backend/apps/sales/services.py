@@ -821,32 +821,6 @@ class PaymentService:
         except IntegrityError:
             raise ValueError("Journal entry reference already exists.")
         return payment
-class CustomerService:
-    def __init__(self, tenant_id):
-        self.tenant_id = tenant_id
-
-    @staticmethod
-    def _normalize_code(value):
-        return (value or "").strip()
-
-    @staticmethod
-    def _suffix(code):
-        import re
-        match = re.search(r"(\d+)\s*$", code or "")
-        return int(match.group(1)) if match else 0
-
-    def mint_code(self):
-        prefix = "CUS"
-        qs = Customer.objects.for_tenant(self.tenant_id)
-        codes = list(qs.exclude(code="").values_list("code", flat=True))
-        suffixes = [self._suffix(c) for c in codes if self._suffix(c) > 0]
-        next_num = (max(suffixes) if suffixes else 0) + 1
-        candidate = f"{prefix}-{next_num}"
-        taken = set(codes)
-        while candidate in taken:
-            next_num += 1
-            candidate = f"{prefix}-{next_num}"
-        return candidate
 
 
 class CustomerService:
