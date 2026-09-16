@@ -126,7 +126,7 @@ class PurchaseInvoiceViewSet(viewsets.ModelViewSet):
         service = PurchaseInvoiceService(request.tenant_id)
         try:
             invoice = service.create_draft(
-                number=data["number"],
+                number=data.get("number"),
                 vendor_id=data["vendor_id"].pk,
                 invoice_date=data["invoice_date"],
                 due_date=data.get("due_date"),
@@ -149,7 +149,6 @@ class PurchaseInvoiceViewSet(viewsets.ModelViewSet):
         try:
             invoice = service.update_draft(
                 kwargs["pk"],
-                number=data["number"] if "number" in data else None,
                 vendor_id=(
                     data["vendor_id"].pk if "vendor_id" in data else None
                 ),

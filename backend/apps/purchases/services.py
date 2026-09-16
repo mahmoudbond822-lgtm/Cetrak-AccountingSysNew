@@ -137,8 +137,32 @@ class PurchaseInvoiceService:
             raise ValueError("Cannot use an inactive product.")
         return product
 
-    def create_draft(self, *, number, vendor_id, invoice_date, due_date,
+    def next_number(self):
+        prefix = "INV"
+        max_suffix = 0
+        for number in PurchaseInvoice.objects.for_tenant(
+            self.tenant_id
+        ).filter(number__startswith=f"{prefix}-").values_list(
+            "number", flat=True
+        ):
+            suffix = number[len(prefix) + 1:]
+            if suffix.isdigit():
+                max_suffix = max(max_suffix, int(suffix))
+        start = max_suffix + 1
+        for _ in range(100):
+            candidate = f"{prefix}-{start:04d}"
+            if not PurchaseInvoice.objects.filter(
+                tenant_id=self.tenant_id, number=candidate
+            ).exists():
+                break
+            start += 1
+        else:
+            raise ValueError("Unable to generate a unique invoice number.")
+        return candidate
+
+    def create_draft(self, *, number=None, vendor_id, invoice_date, due_date,
                      discount, notes, lines_data):
+        number = (number or "").strip() or self.next_number()
         if not lines_data:
             raise ValueError("An invoice must have at least one line.")
         try:
@@ -213,8 +237,6 @@ class PurchaseInvoiceService:
         }
         if invoice.status != PurchaseInvoice.Status.DRAFT:
             raise ValueError("Only draft purchase invoices can be edited.")
-        if number is not None:
-            invoice.number = number
         if vendor_id is not None:
             try:
                 vendor = Vendor.objects.for_tenant(self.tenant_id).get(

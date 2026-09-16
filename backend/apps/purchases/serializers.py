@@ -211,6 +211,9 @@ class PurchaseInvoiceSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+        extra_kwargs = {
+            "number": {"required": False, "allow_blank": True},
+        }
 
     def get_paid_amount(self, obj):
         service = PaymentService(obj.tenant_id)
@@ -221,12 +224,6 @@ class PurchaseInvoiceSerializer(serializers.ModelSerializer):
         return "{:.4f}".format(service.purchase_outstanding(obj))
 
     def validate(self, data):
-        if "number" in data:
-            number = (data.get("number") or "").strip()
-            if not number:
-                raise serializers.ValidationError(
-                    {"number": ["Invoice number is required."]}
-                )
         invoice_date = data.get("invoice_date")
         due_date = data.get("due_date")
         if invoice_date and due_date and due_date < invoice_date:

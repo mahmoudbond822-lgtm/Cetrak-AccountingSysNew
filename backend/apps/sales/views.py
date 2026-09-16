@@ -111,7 +111,7 @@ class SalesInvoiceViewSet(viewsets.ModelViewSet):
         service = SalesInvoiceService(request.tenant_id)
         try:
             invoice = service.create_draft(
-                number=data["number"],
+                number=data.get("number"),
                 customer_id=data["customer_id"].pk,
                 invoice_date=data["invoice_date"],
                 due_date=data.get("due_date"),
@@ -134,7 +134,6 @@ class SalesInvoiceViewSet(viewsets.ModelViewSet):
         try:
             invoice = service.update_draft(
                 kwargs["pk"],
-                number=data["number"] if "number" in data else None,
                 customer_id=(
                     data["customer_id"].pk if "customer_id" in data else None
                 ),

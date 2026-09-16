@@ -64,7 +64,7 @@ function seededForm(invoice) {
   }
 }
 
-export default function PurchaseInvoiceForm({ open, onClose, invoice, vendors, onSaved }) {
+export default function PurchaseInvoiceForm({ open, onClose, invoice, vendors, nextNumber, onSaved }) {
   const [form, setForm] = useState(seededForm(invoice))
   const [saving, setSaving] = useState(false)
   const [formErrors, setFormErrors] = useState({})
@@ -115,7 +115,6 @@ export default function PurchaseInvoiceForm({ open, onClose, invoice, vendors, o
         tax_rate: String(num(l.tax_rate || 0)),
       }))
     const payload = {
-      number: form.number,
       vendor_id: form.vendor_id,
       invoice_date: form.invoice_date,
       due_date: form.due_date || null,
@@ -124,12 +123,14 @@ export default function PurchaseInvoiceForm({ open, onClose, invoice, vendors, o
       lines,
     }
     try {
+      let saved
       if (invoice) {
         await purchasesService.updateInvoice(invoice.id, payload)
       } else {
-        await purchasesService.createInvoice(payload)
+        const res = await purchasesService.createInvoice(payload)
+        saved = res?.data
       }
-      onSaved()
+      onSaved(saved)
       onClose()
     } catch (err) {
       const data = err.response?.data
@@ -171,7 +172,11 @@ export default function PurchaseInvoiceForm({ open, onClose, invoice, vendors, o
           {formErrors.vendor_id && <span style={{ color: '#F44336', fontSize: '0.75rem' }}>{Array.isArray(formErrors.vendor_id) ? formErrors.vendor_id[0] : formErrors.vendor_id}</span>}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
-          <Input label="Invoice Number *" name="number" value={form.number} onChange={handleChange} error={formErrors.number} required />
+          {invoice ? (
+            <Input label="Invoice Number" value={form.number} readOnly />
+          ) : (
+            <Input label="Invoice Number (auto-assigned)" value={nextNumber || 'INV-0001'} readOnly />
+          )}
           <Input label="Invoice Date" type="date" name="invoice_date" value={form.invoice_date} onChange={handleChange} required />
           <Input label="Due Date" type="date" name="due_date" value={form.due_date} onChange={handleChange} error={formErrors.due_date} />
         </div>
