@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import PurchasesNav from '../../components/Layout/PurchasesNav'
 import Table from '../../components/shared/Table'
 import Button from '../../components/shared/Button'
@@ -14,6 +14,17 @@ const skeletonStyle = {
   marginBottom: '0.5rem',
 }
 
+function nextVendorCode(vendors) {
+  const used = new Set()
+  for (const v of vendors || []) {
+    const m = /^VEN-(\d+)$/.exec(v.code || '')
+    if (m) used.add(parseInt(m[1], 10))
+  }
+  let n = 1
+  while (used.has(n)) n += 1
+  return `VEN-${String(n).padStart(4, '0')}`
+}
+
 export default function VendorsPage() {
   const { activeTenantRole } = getAuth()
   const canManage = activeTenantRole === 'Admin' || activeTenantRole === 'Accountant'
@@ -22,6 +33,8 @@ export default function VendorsPage() {
   const [error, setError] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [notice, setNotice] = useState('')
+  const previewRef = useRef('')
 
   const fetchVendors = useCallback(() => {
     purchasesService.getVendors()
@@ -33,8 +46,17 @@ export default function VendorsPage() {
   useEffect(() => { fetchVendors() }, [fetchVendors])
 
   function handleOpenCreate() {
+    previewRef.current = nextVendorCode(vendors)
+    setNotice('')
     setEditing(null)
     setShowModal(true)
+  }
+
+  async function handleSaved(saved) {
+    await fetchVendors()
+    if (saved?.code && saved.code !== previewRef.current) {
+      setNotice(`Saved with auto-assigned code ${saved.code} (preview was ${previewRef.current}).`)
+    }
   }
 
   function handleEdit(vendor) {
@@ -89,6 +111,12 @@ export default function VendorsPage() {
           )}
         </div>
 
+        {notice && (
+          <div style={{ padding: '0.75rem 1rem', background: '#F0F8F0', border: '1px solid #4CAF50', borderRadius: '6px', marginBottom: '1rem', color: '#2E7D32', fontSize: '0.875rem' }}>
+            {notice}
+          </div>
+        )}
+
         {error && (
           <div style={{ padding: '0.75rem 1rem', background: '#FFF3F3', border: '1px solid #F44336', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.875rem' }}>
             {error}
@@ -109,7 +137,8 @@ export default function VendorsPage() {
           open={showModal}
           onClose={() => setShowModal(false)}
           vendor={editing}
-          onSaved={fetchVendors}
+          nextCode={nextVendorCode(vendors)}
+          onSaved={handleSaved}
         />
       </div>
     </div>

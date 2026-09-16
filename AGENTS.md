@@ -1,5 +1,5 @@
 <!-- SPECKIT START -->
-Implementation plan: specs/013-auto-customer-code/plan.md | specs/014-auto-customer-code/plan.md
+Implementation plan: specs/013-auto-customer-code/plan.md | specs/014-auto-customer-code/plan.md | specs/015-auto-vendor-code/plan.md
 
 Current phase: 012-H2 IDENTITY & SESSION HARDENING COMPLETE — resolved AUD-008 (invitation email binding), AUD-009 (refresh token moved to HttpOnly cookie + double-submit CSRF + restrictive CSP/security headers in prod), AUD-017 (tenant-switch rotates the refresh cookie, no tenant-context drift on refresh), and the operator user-disable gap (`PATCH /tenants/members/{id}/status/`, last-admin guard, `me` status read-only). Features 001–012 remain implemented. Full suite 367 passed, 1 postgres-only skip, migrations clean, frontend build green, lint unchanged (16 pre-existing problems). Do not push or deploy.
 

@@ -15,7 +15,7 @@ const emptyForm = {
   tax_id: '',
 }
 
-export default function VendorModal({ open, onClose, vendor, onSaved }) {
+export default function VendorModal({ open, onClose, vendor, nextCode, onSaved }) {
   const [form, setForm] = useState(vendor ? {
     code: vendor.code || '',
     name: vendor.name || '',
@@ -36,7 +36,6 @@ export default function VendorModal({ open, onClose, vendor, onSaved }) {
     setSaving(true)
     setFormErrors({})
     const payload = {
-      code: form.code,
       name: form.name,
       email: form.email || null,
       phone: form.phone || null,
@@ -46,10 +45,11 @@ export default function VendorModal({ open, onClose, vendor, onSaved }) {
     try {
       if (vendor) {
         await purchasesService.updateVendor(vendor.id, payload)
+        onSaved()
       } else {
-        await purchasesService.createVendor(payload)
+        const res = await purchasesService.createVendor(payload)
+        onSaved(res?.data)
       }
-      onSaved()
       onClose()
     } catch (err) {
       const data = err.response?.data
@@ -78,9 +78,16 @@ export default function VendorModal({ open, onClose, vendor, onSaved }) {
       }
     >
       <form onSubmit={handleSubmit}>
-        <div style={fieldStyle}>
-          <Input label="Code *" name="code" value={form.code} onChange={handleChange} error={formErrors.code} required />
-        </div>
+        {vendor && (
+          <div style={fieldStyle}>
+            <Input label="Code" value={form.code} readOnly />
+          </div>
+        )}
+        {!vendor && (
+          <div style={fieldStyle}>
+            <Input label="Code (auto-assigned)" value={nextCode || 'VEN-0001'} readOnly />
+          </div>
+        )}
         <div style={fieldStyle}>
           <Input label="Name *" name="name" value={form.name} onChange={handleChange} error={formErrors.name} required />
         </div>

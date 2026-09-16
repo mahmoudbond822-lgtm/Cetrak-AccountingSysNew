@@ -21,6 +21,7 @@ from apps.purchases.serializers import (
 from apps.purchases.services import (
     PurchaseInvoiceService,
     PurchaseSettingsService,
+    VendorService,
     _UNSET,
 )
 from apps.sales.models import Payment
@@ -47,11 +48,20 @@ class VendorViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
+        code = data.get("code")
         try:
-            vendor, created = models.Vendor.objects.get_or_create(
-                tenant_id=request.tenant_id,
-                code=data["code"],
-                defaults={k: v for k, v in data.items() if k != "code"},
+            vendor, created = VendorService(request.tenant_id).create_with_flag(
+                name=data["name"],
+                email=data.get("email"),
+                phone=data.get("phone"),
+                address=data.get("address"),
+                tax_id=data.get("tax_id"),
+                code=code,
+            )
+        except ValueError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
             )
         except IntegrityError:
             return Response(

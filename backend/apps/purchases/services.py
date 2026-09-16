@@ -478,3 +478,123 @@ class PurchaseInvoiceService:
             target=invoice,
             before=before,
         )
+
+
+class VendorService:
+    def __init__(self, tenant_id):
+        self.tenant_id = tenant_id
+
+    def create_with_flag(self, *, name, email=None, phone=None, address=None,
+                         tax_id=None, code=None):
+        from apps.purchases.models import Vendor
+
+        name = (name or "").strip()
+        if not name:
+            raise ValueError("Vendor name is required.")
+        code = (code or "").strip()
+        if code:
+            return Vendor.objects.get_or_create(
+                tenant_id=self.tenant_id,
+                code=code,
+                defaults={
+                    "name": name,
+                    "email": (email or "").strip() or None,
+                    "phone": (phone or "").strip() or None,
+                    "address": (address or "").strip() or None,
+                    "tax_id": (tax_id or "").strip() or None,
+                },
+            )
+        start = 1
+        prefix = "VEN"
+        for _ in range(100):
+            candidate = f"{prefix}-{start:04d}"
+            if not Vendor.objects.filter(
+                tenant_id=self.tenant_id, code=candidate
+            ).exists():
+                break
+            start += 1
+        else:
+            raise ValueError("Unable to generate a unique vendor code.")
+        return (
+            Vendor.objects.create(
+                tenant_id=self.tenant_id,
+                code=candidate,
+                name=name,
+                email=(email or "").strip() or None,
+                phone=(phone or "").strip() or None,
+                address=(address or "").strip() or None,
+                tax_id=(tax_id or "").strip() or None,
+            ),
+            True,
+        )
+
+    def create(self, *, name, email=None, phone=None, address=None,
+               tax_id=None, code=None):
+        from apps.purchases.models import Vendor
+
+        name = (name or "").strip()
+        if not name:
+            raise ValueError("Vendor name is required.")
+        code = (code or "").strip()
+        if code:
+            vendor, created = Vendor.objects.get_or_create(
+                tenant_id=self.tenant_id,
+                code=code,
+                defaults={
+                    "name": name,
+                    "email": (email or "").strip() or None,
+                    "phone": (phone or "").strip() or None,
+                    "address": (address or "").strip() or None,
+                    "tax_id": (tax_id or "").strip() or None,
+                },
+            )
+            return vendor
+        start = 1
+        prefix = "VEN"
+        for _ in range(100):
+            candidate = f"{prefix}-{start:04d}"
+            if not Vendor.objects.filter(
+                tenant_id=self.tenant_id, code=candidate
+            ).exists():
+                break
+            start += 1
+        else:
+            raise ValueError("Unable to generate a unique vendor code.")
+        return Vendor.objects.create(
+            tenant_id=self.tenant_id,
+            code=candidate,
+            name=name,
+            email=(email or "").strip() or None,
+            phone=(phone or "").strip() or None,
+            address=(address or "").strip() or None,
+            tax_id=(tax_id or "").strip() or None,
+        )
+
+    def update(self, vendor_id, *, name=None, email=None,
+               phone=None, address=None, tax_id=None,
+               is_active=None, code=None):
+        from apps.purchases.models import Vendor
+        try:
+            vendor = Vendor.objects.for_tenant(self.tenant_id).get(
+                pk=vendor_id
+            )
+        except Vendor.DoesNotExist:
+            raise ValueError("Vendor not found.")
+        if name is not None:
+            name = (name or "").strip()
+            if not name:
+                raise ValueError("Vendor name is required.")
+            vendor.name = name
+        for field in ("email", "phone", "address", "tax_id"):
+            value = locals().get(field)
+            if value is not None:
+                setattr(vendor, field, (value or "").strip() or None)
+        if code is not None:
+            code = (code or "").strip()
+            if code:
+                vendor.code = code
+        if is_active is not None:
+            vendor.is_active = bool(is_active)
+        with transaction.atomic():
+            vendor.save()
+        return vendor
