@@ -9,6 +9,7 @@ export const accountingService = {
   getJournalEntries: (params) => api.get('/accounting/journal-entries/', { params }),
   createJournalEntry: (data) => api.post('/accounting/journal-entries/', data),
   postJournalEntry: (id) => api.post(`/accounting/journal-entries/${id}/post/`),
+  getNextJournalReference: () => api.get('/accounting/journal-entries/next-reference/'),
 
   getLedger: (params) => api.get('/accounting/ledger/', { params }),
 

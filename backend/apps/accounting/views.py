@@ -97,7 +97,7 @@ class JournalEntryViewSet(viewsets.ReadOnlyModelViewSet):
             entry = svc.create_entry(
                 date=serializer.validated_data["date"],
                 description=serializer.validated_data["description"],
-                reference=serializer.validated_data["reference"],
+                reference=serializer.validated_data.get("reference"),
                 lines_data=serializer.validated_data["lines"],
             )
         except IntegrityError:
@@ -107,6 +107,11 @@ class JournalEntryViewSet(viewsets.ReadOnlyModelViewSet):
             )
         output = self.get_serializer(entry).data
         return Response(output, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=["get"], url_path="next-reference")
+    def next_reference(self, request):
+        svc = JournalEntryService(request.tenant_id)
+        return Response({"reference": svc.next_reference()})
 
     def update(self, request, *args, **kwargs):
         return Response(

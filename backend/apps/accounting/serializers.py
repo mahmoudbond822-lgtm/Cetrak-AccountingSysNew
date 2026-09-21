@@ -3,6 +3,7 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from apps.accounting import models
+from apps.accounting.services import JournalEntryService
 
 
 class AccountSerializer(serializers.ModelSerializer):
@@ -102,6 +103,9 @@ class JournalEntryLineSerializer(serializers.ModelSerializer):
 
 class JournalEntrySerializer(serializers.ModelSerializer):
     lines = JournalEntryLineSerializer(many=True)
+    reference = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True
+    )
     total_debit = serializers.DecimalField(
         max_digits=19, decimal_places=4, read_only=True
     )
@@ -165,6 +169,12 @@ class JournalEntrySerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         lines_data = validated_data.pop("lines")
+        reference = (validated_data.pop("reference", None) or "").strip()
+        if not reference:
+            request = self.context.get("request")
+            tenant_id = getattr(request, "tenant_id", None)
+            reference = JournalEntryService(tenant_id).next_reference()
+        validated_data["reference"] = reference
         entry = models.JournalEntry.objects.create(**validated_data)
         for line_data in lines_data:
             line_data = dict(line_data)

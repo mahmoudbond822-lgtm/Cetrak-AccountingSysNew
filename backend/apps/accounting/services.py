@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.db.models import Sum
+from django.utils import timezone
 
 from apps.accounting.models import Account, JournalEntry, JournalEntryLine
 from apps.core.audit import AuditService
@@ -118,7 +119,34 @@ class JournalEntryService:
     def __init__(self, tenant_id):
         self.tenant_id = tenant_id
 
-    def create_entry(self, date, description, reference, lines_data):
+    def next_reference(self, year=None):
+        prefix = "JE"
+        if year is None:
+            year = timezone.now().year
+        scoped = f"{prefix}-{year}-"
+        max_suffix = 0
+        for reference in JournalEntry.objects.for_tenant(
+            self.tenant_id
+        ).filter(reference__startswith=scoped).values_list(
+            "reference", flat=True
+        ):
+            suffix = reference[len(scoped):]
+            if suffix.isdigit():
+                max_suffix = max(max_suffix, int(suffix))
+        start = max_suffix + 1
+        for _ in range(100):
+            candidate = f"{scoped}{start:04d}"
+            if not JournalEntry.objects.filter(
+                tenant_id=self.tenant_id, reference=candidate
+            ).exists():
+                break
+            start += 1
+        else:
+            raise ValueError("Unable to generate a unique journal entry reference.")
+        return candidate
+
+    def create_entry(self, date, description, lines_data, reference=None):
+        reference = (reference or "").strip() or self.next_reference()
         entry = JournalEntry.objects.create(
             tenant_id=self.tenant_id,
             date=date,
