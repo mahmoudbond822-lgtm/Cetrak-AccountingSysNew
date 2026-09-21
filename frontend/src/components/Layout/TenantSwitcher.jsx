@@ -1,75 +1,97 @@
 import { useState } from 'react'
 import api, { setTokens, setActiveTenant, getAuth } from '../../services/api'
+import { color, font, space } from '../../lib/tokens'
+import { Dropdown } from '../ui'
 
+const switcherButtonStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: space[2],
+  border: `1px solid ${color.border.default}`,
+  background: color.bg.surface,
+  borderRadius: 'var(--radius-sm)',
+  padding: `${space[1]} ${space[2]}`,
+  height: '34px',
+  color: color.text.primary,
+  fontSize: font.size.bodySmall,
+  cursor: 'pointer',
+  maxWidth: '220px',
+}
+
+const orgIconStyle = {
+  width: '22px',
+  height: '22px',
+  borderRadius: 'var(--radius-sm)',
+  background: color.brand.soft,
+  color: color.brand.primary,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  flexShrink: 0,
+}
+
+const nameStyle = {
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  fontWeight: font.weight.medium,
+}
+
+/**
+ * TenantSwitcher — organization selector.
+ *
+ * Behavior preserved exactly: uses the existing `/tenants/switch/{id}/` endpoint,
+ * stores the returned tenant, and reloads. Only the presentation changes.
+ * Renders nothing when the user belongs to a single tenant (unchanged).
+ */
 export default function TenantSwitcher() {
-  const [open, setOpen] = useState(false)
-  const { activeTenantId, activeTenantName, activeTenantRole, accessToken } = getAuth()
-  const userEmail = localStorage.getItem('userEmail')
-  const stored = localStorage.getItem('tenants')
+  const [busy, setBusy] = useState(false)
+  const { activeTenantId, activeTenantName } = getAuth()
+  const stored = typeof localStorage !== 'undefined' ? localStorage.getItem('tenants') : null
   const tenants = stored ? JSON.parse(stored) : []
 
+  if (tenants.length <= 1) return null
+
   async function handleSwitch(tenant) {
-    if (tenant.id === activeTenantId) {
-      setOpen(false)
-      return
-    }
+    if (tenant.id === activeTenantId || busy) return
+    setBusy(true)
     try {
       const { data } = await api.post(`/tenants/switch/${tenant.id}/`)
       setTokens(data.access)
       setActiveTenant(data.tenant.id, data.tenant.name, data.tenant.role)
       window.location.reload()
     } catch {
-      // switch failed
+      setBusy(false)
     }
-    setOpen(false)
   }
 
-  if (tenants.length <= 1) return null
-
   return (
-    <div style={{ position: 'relative', display: 'inline-block' }}>
-      {userEmail && <span style={{ marginRight: 12, color: '#666', fontSize: '0.85em' }}>{userEmail}</span>}
-      <button onClick={() => setOpen(!open)} style={{ cursor: 'pointer' }}>
-        {activeTenantName || 'Select Tenant'} ({activeTenantRole}) ▾
-      </button>
-      {open && (
-        <ul
-          style={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            margin: 0,
-            padding: '4px 0',
-            listStyle: 'none',
-            background: '#fff',
-            border: '1px solid #ccc',
-            borderRadius: '4px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-            zIndex: 1000,
-            minWidth: '180px',
-          }}
+    <Dropdown
+      align="left"
+      trigger={() => (
+        <button
+          type="button"
+          style={switcherButtonStyle}
+          className="cetrak-focus-visible"
+          aria-label="Switch organization"
+          aria-haspopup="menu"
+          disabled={busy}
         >
-          {tenants.map((t) => (
-            <li key={t.id} style={{ borderBottom: '1px solid #eee' }}>
-              <button
-                onClick={() => handleSwitch(t)}
-                style={{
-                  display: 'block',
-                  width: '100%',
-                  padding: '8px 12px',
-                  textAlign: 'left',
-                  border: 'none',
-                  background: t.id === activeTenantId ? '#f0f0f0' : 'transparent',
-                  cursor: 'pointer',
-                  fontWeight: t.id === activeTenantId ? 'bold' : 'normal',
-                }}
-              >
-                {t.name} <span style={{ color: '#666', fontSize: '0.85em' }}>({t.role})</span>
-              </button>
-            </li>
-          ))}
-        </ul>
+          <span style={orgIconStyle} aria-hidden="true">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6" />
+            </svg>
+          </span>
+          <span style={nameStyle}>{activeTenantName || 'Select organization'}</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.25" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
       )}
-    </div>
+      items={tenants.map((t) => ({
+        label: `${t.name} (${t.role})`,
+        onClick: () => handleSwitch(t),
+      }))}
+    />
   )
 }

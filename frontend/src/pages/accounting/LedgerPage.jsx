@@ -1,23 +1,26 @@
 import { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
-import AccountingNav from '../../components/Layout/AccountingNav'
 import LedgerTable from '../../components/accounting/ledger/LedgerTable'
 import { accountingService } from '../../services/accountingService'
+import {
+  Alert, Button, Card, Input, PageContainer, PageHeader, Skeleton,
+} from '../../components/ui'
+import { color, font, space } from '../../lib/tokens'
 
-const pageStyle = { maxWidth: '960px', margin: '0 auto', padding: '1.5rem' }
-const titleStyle = { fontSize: '1.5rem', fontWeight: 600, marginBottom: '1.5rem' }
-const filterStyle = { display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '1rem' }
-const inputStyle = {
-  padding: '0.5rem 0.75rem', border: '1px solid var(--border)',
-  borderRadius: '6px', fontSize: '0.875rem', outline: 'none',
+const filterStyle = {
+  display: 'flex',
+  gap: space[3],
+  alignItems: 'flex-end',
+  marginBottom: space[4],
+  flexWrap: 'wrap',
 }
-const skeletonStyle = {
-  height: '40px', background: '#f0f0f0', borderRadius: '6px',
-  marginBottom: '0.5rem',
-}
+
 const accountHeaderStyle = {
-  padding: '1rem', background: '#f9f9f9', borderRadius: '8px',
-  border: '1px solid var(--border)', marginBottom: '1rem',
+  padding: space[4],
+  background: color.bg.hover,
+  borderRadius: 'var(--radius-md)',
+  border: `1px solid ${color.border.default}`,
+  marginBottom: space[4],
 }
 
 export default function LedgerPage() {
@@ -47,47 +50,63 @@ export default function LedgerPage() {
   useEffect(() => { fetchLedger() }, [accountId])
 
   return (
-    <div>
-      <AccountingNav />
-      <div style={pageStyle}>
-        <h1 style={titleStyle}>General Ledger</h1>
+    <PageContainer>
+      <PageHeader
+        title="General Ledger"
+        description="All postings for a single account."
+        breadcrumbs={[{ label: 'Accounting' }, { label: 'General Ledger' }]}
+      />
 
-        <div style={filterStyle}>
-          <label style={{ fontSize: '0.8rem', color: 'var(--text)' }}>From:</label>
-          <input style={inputStyle} type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-          <label style={{ fontSize: '0.8rem', color: 'var(--text)' }}>To:</label>
-          <input style={inputStyle} type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-          <button
-            type="button"
-            style={{
-              cursor: 'pointer', background: 'var(--accent)', color: '#fff',
-              border: 'none', borderRadius: '6px', padding: '0.5rem 1rem',
-              fontSize: '0.875rem',
-            }}
-            onClick={fetchLedger}
-          >
-            Filter
-          </button>
-        </div>
-
-        {error && (
-          <div style={{ padding: '0.75rem 1rem', background: '#FFF3F3', border: '1px solid #F44336', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.875rem' }}>
-            {error}
-          </div>
+      <div style={filterStyle}>
+        <Input
+          label="From"
+          type="date"
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+          style={{ width: '170px' }}
+        />
+        <Input
+          label="To"
+          type="date"
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+          style={{ width: '170px' }}
+        />
+        <Button variant="primary" onClick={fetchLedger}>Filter</Button>
+        {(dateFrom || dateTo) && (
+          <Button variant="ghost" onClick={() => { setDateFrom(''); setDateTo('') }}>
+            Clear
+          </Button>
         )}
-
-        {loading ? (
-          <div>{[...Array(5)].map((_, i) => <div key={i} style={skeletonStyle} />)}</div>
-        ) : data ? (
-          <>
-            <div style={accountHeaderStyle}>
-              <div style={{ fontSize: '1rem', fontWeight: 600 }}>{data.account.name}</div>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text)' }}>Type: {data.account.type}</div>
-            </div>
-            <LedgerTable entries={data.entries} totals={data.totals} />
-          </>
-        ) : null}
       </div>
-    </div>
+
+      {error && (
+        <Alert tone="error" dismissible onDismiss={setError} style={{ marginBottom: space[4] }}>
+          {error}
+        </Alert>
+      )}
+
+      {loading ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: space[2] }} aria-busy="true">
+          {[...Array(5)].map((_, i) => (
+            <Skeleton key={i} height="44px" />
+          ))}
+        </div>
+      ) : data ? (
+        <>
+          <div style={accountHeaderStyle}>
+            <div style={{ fontSize: font.size.cardTitle, fontWeight: font.weight.semibold, color: color.text.primary }}>
+              {data.account.name}
+            </div>
+            <div style={{ fontSize: font.size.caption, color: color.text.muted, marginTop: space[1] }}>
+              Type: {data.account.type}
+            </div>
+          </div>
+          <Card>
+            <LedgerTable entries={data.entries} totals={data.totals} />
+          </Card>
+        </>
+      ) : null}
+    </PageContainer>
   )
 }

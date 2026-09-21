@@ -1,7 +1,5 @@
 import { useState } from 'react'
-import Modal from '../../shared/Modal'
-import Button from '../../shared/Button'
-import Input from '../../shared/Input'
+import { Modal, Button, Input, Alert } from '../../ui'
 import ProductSelect from '../ProductSelect'
 import { inventoryService } from '../../../services/inventoryService'
 
@@ -137,7 +135,7 @@ export default function AdjustmentForm({ open, onClose, adjustment, onSaved }) {
             <div key={l.key} style={lineRowStyle}>
               <ProductSelect value={l.product_id} onChange={(v) => handleLineChange(l.key, 'product_id', v)} />
               <input
-                style={{ padding: '0.4rem 0.6rem', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.85rem' }}
+                className="cetrak-input"
                 type="number" step="any"
                 value={l.quantity}
                 onChange={(e) => handleLineChange(l.key, 'quantity', e.target.value)}
@@ -152,7 +150,7 @@ export default function AdjustmentForm({ open, onClose, adjustment, onSaved }) {
           <Input label="Notes" name="notes" value={form.notes} onChange={handleChange} />
         </div>
         {formErrors.general && (
-          <div style={{ padding: '0.5rem', background: '#FFF3F3', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.8rem' }}>{formErrors.general}</div>
+          <Alert tone="error" style={{ marginBottom: '1rem' }}>{formErrors.general}</Alert>
         )}
       </form>
     </Modal>

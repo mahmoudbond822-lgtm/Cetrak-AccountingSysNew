@@ -1,16 +1,9 @@
 import { useState, useEffect } from 'react'
-import Modal from '../../shared/Modal'
-import Button from '../../shared/Button'
-import Input from '../../shared/Input'
+import { Modal, Button, Input, Select, Alert } from '../../ui'
 import { accountingService } from '../../../services/accountingService'
 import { purchasesService } from '../../../services/purchasesService'
 
 const fieldStyle = { display: 'flex', flexDirection: 'column', gap: '0.375rem', marginBottom: '1rem' }
-const labelStyle = { fontSize: '0.8rem', fontWeight: 500 }
-const selectStyle = {
-  padding: '0.5rem 0.75rem', border: '1px solid var(--border)',
-  borderRadius: '6px', fontSize: '0.875rem', outline: 'none',
-}
 const money = (v) => Number(v || 0).toFixed(2)
 const METHODS = ['Cash', 'Bank Transfer', 'Card', 'Check']
 
@@ -118,18 +111,22 @@ export default function PurchasePaymentForm({ open, onClose, payment, invoices, 
       }
     >
       <form onSubmit={handleSubmit}>
-        <div style={fieldStyle}>
-          <label style={labelStyle}>Purchase Invoice *</label>
-          <select style={selectStyle} name="purchase_invoice_id" value={form.purchase_invoice_id} onChange={handleChange} required>
-            <option value="">Select posted invoice</option>
-            {invoices.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.number} – {i.vendor_name} (outstanding {money(i.outstanding_balance)})
-              </option>
-            ))}
-          </select>
-          {formErrors.purchase_invoice_id && <span style={{ color: '#F44336', fontSize: '0.75rem' }}>{Array.isArray(formErrors.purchase_invoice_id) ? formErrors.purchase_invoice_id[0] : formErrors.purchase_invoice_id}</span>}
-        </div>
+        <Select
+          label="Purchase Invoice *"
+          name="purchase_invoice_id"
+          value={form.purchase_invoice_id}
+          onChange={handleChange}
+          error={formErrors.purchase_invoice_id ? (Array.isArray(formErrors.purchase_invoice_id) ? formErrors.purchase_invoice_id[0] : formErrors.purchase_invoice_id) : undefined}
+          required
+          style={{ marginBottom: '1rem' }}
+        >
+          <option value="">Select posted invoice</option>
+          {invoices.map((i) => (
+            <option key={i.id} value={i.id}>
+              {i.number} – {i.vendor_name} (outstanding {money(i.outstanding_balance)})
+            </option>
+          ))}
+        </Select>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
           <Input label="Payment Number *" name="number" value={form.number} onChange={handleChange} error={formErrors.number} required />
@@ -143,24 +140,24 @@ export default function PurchasePaymentForm({ open, onClose, payment, invoices, 
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Payment Method *</label>
-            <select style={selectStyle} name="method" value={form.method} onChange={handleChange} required>
-              {METHODS.map((m) => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
-          </div>
-          <div style={fieldStyle}>
-            <label style={labelStyle}>Cash/Bank Account *</label>
-            <select style={selectStyle} name="cash_account" value={form.cash_account} onChange={handleChange} required>
-              <option value="">Select Asset account</option>
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </select>
-            {formErrors.cash_account && <span style={{ color: '#F44336', fontSize: '0.75rem' }}>{Array.isArray(formErrors.cash_account) ? formErrors.cash_account[0] : formErrors.cash_account}</span>}
-          </div>
+          <Select label="Payment Method *" name="method" value={form.method} onChange={handleChange} required>
+            {METHODS.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+          </Select>
+          <Select
+            label="Cash/Bank Account *"
+            name="cash_account"
+            value={form.cash_account}
+            onChange={handleChange}
+            error={formErrors.cash_account ? (Array.isArray(formErrors.cash_account) ? formErrors.cash_account[0] : formErrors.cash_account) : undefined}
+            required
+          >
+            <option value="">Select Asset account</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+          </Select>
           <Input label="Reference" name="reference" value={form.reference} onChange={handleChange} />
         </div>
 
@@ -168,15 +165,15 @@ export default function PurchasePaymentForm({ open, onClose, payment, invoices, 
           <Input label="Notes" name="notes" value={form.notes} onChange={handleChange} />
         </div>
         {amountExceeds && (
-          <div style={{ padding: '0.5rem', background: '#FFF3F3', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.8rem' }}>
+          <Alert tone="error" style={{ marginBottom: '1rem' }}>
             Amount exceeds the outstanding balance of {money(outstanding)}.
-          </div>
+          </Alert>
         )}
         {formErrors.general && (
-          <div style={{ padding: '0.5rem', background: '#FFF3F3', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.8rem' }}>{formErrors.general}</div>
+          <Alert tone="error" style={{ marginBottom: '1rem' }}>{formErrors.general}</Alert>
         )}
         {formErrors.detail && (
-          <div style={{ padding: '0.5rem', background: '#FFF3F3', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.8rem' }}>{formErrors.detail}</div>
+          <Alert tone="error" style={{ marginBottom: '1rem' }}>{formErrors.detail}</Alert>
         )}
       </form>
     </Modal>

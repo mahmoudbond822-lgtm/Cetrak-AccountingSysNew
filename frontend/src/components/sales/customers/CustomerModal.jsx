@@ -1,7 +1,5 @@
-﻿import { useState } from 'react'
-import Modal from '../../shared/Modal'
-import Button from '../../shared/Button'
-import Input from '../../shared/Input'
+import { useState } from 'react'
+import { Modal, Button, Input, Alert } from '../../ui'
 import { salesService } from '../../../services/salesService'
 
 const fieldStyle = { display: 'flex', flexDirection: 'column', gap: '0.375rem', marginBottom: '0.75rem' }
@@ -97,7 +95,7 @@ export default function CustomerModal({ open, onClose, customer, nextCode, onSav
           <Input label="Tax Identifier" name="tax_id" value={form.tax_id} onChange={handleChange} error={formErrors.tax_id} />
         </div>
         {formErrors.general && (
-          <div style={{ padding: '0.5rem', background: '#FFF3F3', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.8rem' }}>{formErrors.general}</div>
+          <Alert tone="error" style={{ marginBottom: '1rem' }}>{formErrors.general}</Alert>
         )}
       </form>
     </Modal>

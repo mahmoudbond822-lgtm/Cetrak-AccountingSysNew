@@ -1,18 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import PurchasesNav from '../../components/Layout/PurchasesNav'
-import Table from '../../components/shared/Table'
-import Button from '../../components/shared/Button'
 import VendorModal from '../../components/purchases/vendors/VendorModal'
 import { getAuth } from '../../services/api'
 import { purchasesService } from '../../services/purchasesService'
-
-const pageStyle = { maxWidth: '960px', margin: '0 auto', padding: '1.5rem' }
-const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }
-const titleStyle = { fontSize: '1.5rem', fontWeight: 600 }
-const skeletonStyle = {
-  height: '40px', background: '#f0f0f0', borderRadius: '6px',
-  marginBottom: '0.5rem',
-}
+import { useToast } from '../../components/ui'
+import {
+  Alert, Badge, Button, ConfirmDialog, PageContainer, PageHeader, Table,
+} from '../../components/ui'
+import { space } from '../../lib/tokens'
 
 function nextVendorCode(vendors) {
   const used = new Set()
@@ -26,6 +20,7 @@ function nextVendorCode(vendors) {
 }
 
 export default function VendorsPage() {
+  const toast = useToast()
   const { activeTenantRole } = getAuth()
   const canManage = activeTenantRole === 'Admin' || activeTenantRole === 'Accountant'
   const [vendors, setVendors] = useState([])
@@ -34,13 +29,21 @@ export default function VendorsPage() {
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [notice, setNotice] = useState('')
+  const [pendingDeactivate, setPendingDeactivate] = useState(null)
+  const [deactivating, setDeactivating] = useState(false)
   const previewRef = useRef('')
 
-  const fetchVendors = useCallback(() => {
-    purchasesService.getVendors()
-      .then(({ data }) => setVendors(data))
-      .catch(() => setError('Failed to load vendors. Please try again.'))
-      .finally(() => setLoading(false))
+  const fetchVendors = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const { data } = await purchasesService.getVendors()
+      setVendors(data)
+    } catch {
+      setError('Failed to load vendors. Please try again.')
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => { fetchVendors() }, [fetchVendors])
@@ -64,14 +67,23 @@ export default function VendorsPage() {
     setShowModal(true)
   }
 
-  async function handleDeactivate(vendor) {
-    if (!window.confirm(`Deactivate vendor "${vendor.name}"? This action cannot be undone.`)) return
+  function handleDeactivate(vendor) {
+    setPendingDeactivate(vendor)
+  }
+
+  async function confirmDeactivate() {
+    const vendor = pendingDeactivate
+    if (!vendor) return
+    setDeactivating(true)
     try {
       await purchasesService.deleteVendor(vendor.id)
-      fetchVendors()
+      await fetchVendors()
+      toast.success(`Vendor "${vendor.name}" deactivated.`)
     } catch (err) {
-      const msg = err.response?.data?.detail || 'Failed to deactivate vendor.'
-      alert(msg)
+      toast.error(err.response?.data?.detail || 'Failed to deactivate vendor.')
+    } finally {
+      setDeactivating(false)
+      setPendingDeactivate(null)
     }
   }
 
@@ -84,16 +96,23 @@ export default function VendorsPage() {
     {
       key: 'is_active',
       label: 'Status',
-      render: (v) => (v.is_active ? 'Active' : 'Inactive'),
+      render: (v) => (
+        <Badge tone={v.is_active ? 'success' : 'neutral'} size="sm" dot>
+          {v.is_active ? 'Active' : 'Inactive'}
+        </Badge>
+      ),
     },
     ...(canManage ? [{
       key: 'actions',
       label: 'Actions',
+      isActions: true,
       render: (v) => (
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <Button variant="secondary" onClick={() => handleEdit(v)}>Edit</Button>
+        <div style={{ display: 'flex', gap: space[1], justifyContent: 'flex-end' }}>
+          <Button variant="ghost" size="sm" onClick={() => handleEdit(v)}>Edit</Button>
           {v.is_active && (
-            <Button variant="danger" onClick={() => handleDeactivate(v)}>Deactivate</Button>
+            <Button variant="dangerSoft" size="sm" onClick={() => handleDeactivate(v)}>
+              Deactivate
+            </Button>
           )}
         </div>
       ),
@@ -101,46 +120,61 @@ export default function VendorsPage() {
   ]
 
   return (
-    <div>
-      <PurchasesNav />
-      <div style={pageStyle}>
-        <div style={headerStyle}>
-          <h1 style={titleStyle}>Vendors</h1>
-          {canManage && (
+    <PageContainer>
+      <PageHeader
+        title="Vendors"
+        description="Manage your supplier directory and contact details."
+        breadcrumbs={[{ label: 'Purchases' }, { label: 'Vendors' }]}
+        primaryAction={
+          canManage ? (
             <Button variant="primary" onClick={handleOpenCreate}>Create Vendor</Button>
-          )}
-        </div>
+          ) : undefined
+        }
+      />
 
-        {notice && (
-          <div style={{ padding: '0.75rem 1rem', background: '#F0F8F0', border: '1px solid #4CAF50', borderRadius: '6px', marginBottom: '1rem', color: '#2E7D32', fontSize: '0.875rem' }}>
-            {notice}
-          </div>
-        )}
+      {notice && (
+        <Alert tone="success" dismissible onDismiss={() => setNotice('')} style={{ marginBottom: space[4] }}>
+          {notice}
+        </Alert>
+      )}
 
-        {error && (
-          <div style={{ padding: '0.75rem 1rem', background: '#FFF3F3', border: '1px solid #F44336', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.875rem' }}>
-            {error}
-          </div>
-        )}
+      {error && (
+        <Alert tone="error" dismissible onDismiss={setError} style={{ marginBottom: space[4] }}>
+          {error}
+        </Alert>
+      )}
 
-        {loading ? (
-          <div>
-            {[...Array(4)].map((_, i) => (
-              <div key={i} style={skeletonStyle} />
-            ))}
-          </div>
-        ) : (
-          <Table columns={columns} data={vendors} emptyMessage="No vendors found." />
-        )}
+      <Table
+        columns={columns}
+        data={vendors}
+        loading={loading}
+        emptyTitle="No vendors yet"
+        emptyDescription="Create your first vendor to start recording purchase invoices."
+        emptyAction={canManage ? <Button variant="primary" onClick={handleOpenCreate}>Create Vendor</Button> : undefined}
+      />
 
-        <VendorModal
-          open={showModal}
-          onClose={() => setShowModal(false)}
-          vendor={editing}
-          nextCode={nextVendorCode(vendors)}
-          onSaved={handleSaved}
-        />
-      </div>
-    </div>
+      <VendorModal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        vendor={editing}
+        nextCode={nextVendorCode(vendors)}
+        onSaved={handleSaved}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingDeactivate)}
+        title="Deactivate vendor"
+        description={
+          pendingDeactivate
+            ? `Deactivate vendor "${pendingDeactivate.name}"? This action cannot be undone.`
+            : ''
+        }
+        confirmLabel="Deactivate"
+        tone="danger"
+        loading={deactivating}
+        onConfirm={confirmDeactivate}
+        onCancel={() => setPendingDeactivate(null)}
+      />
+    </PageContainer>
   )
 }

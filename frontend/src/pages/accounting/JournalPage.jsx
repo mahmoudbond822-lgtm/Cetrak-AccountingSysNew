@@ -1,55 +1,73 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
-import AccountingNav from '../../components/Layout/AccountingNav'
 import JournalEntryForm from '../../components/accounting/journal/JournalEntryForm'
 import { accountingService } from '../../services/accountingService'
+import { useToast } from '../../components/ui'
+import {
+  Alert, Badge, Button, ConfirmDialog, EmptyState, Input, PageContainer, PageHeader, Skeleton,
+} from '../../components/ui'
+import { color, font, space } from '../../lib/tokens'
 
-const pageStyle = { maxWidth: '960px', margin: '0 auto', padding: '1.5rem' }
-const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }
-const titleStyle = { fontSize: '1.5rem', fontWeight: 600 }
-const btnPrimary = {
-  cursor: 'pointer', background: 'var(--accent)', color: '#fff',
-  border: 'none', borderRadius: '6px', padding: '0.5rem 1rem',
-  fontSize: '0.875rem', fontWeight: 500, textDecoration: 'none',
+const filterStyle = {
+  display: 'flex',
+  gap: space[3],
+  alignItems: 'flex-end',
+  marginBottom: space[4],
+  flexWrap: 'wrap',
 }
-const filterStyle = { display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '1rem' }
-const inputStyle = {
-  padding: '0.5rem 0.75rem', border: '1px solid var(--border)',
-  borderRadius: '6px', fontSize: '0.875rem', outline: 'none',
+
+const listStyle = {
+  border: `1px solid ${color.border.default}`,
+  borderRadius: 'var(--radius-md)',
+  overflow: 'hidden',
+  background: color.bg.surface,
 }
+
 const rowStyle = {
-  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-  padding: '0.75rem 1rem', borderBottom: '1px solid var(--border)',
-  cursor: 'pointer', fontSize: '0.875rem',
+  display: 'flex',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: space[3],
+  padding: `${space[3]} ${space[4]}`,
+  borderBottom: `1px solid ${color.border.subtle}`,
+  fontSize: font.size.bodySmall,
 }
-const skeletonStyle = {
-  height: '40px', background: '#f0f0f0', borderRadius: '6px',
-  marginBottom: '0.5rem',
+
+const refStyle = {
+  fontWeight: font.weight.medium,
+  color: color.text.primary,
 }
-const badgePosted = {
-  padding: '0.2rem 0.5rem', borderRadius: '10px', fontSize: '0.7rem',
-  background: '#E8F5E9', color: '#2E7D32', border: '1px solid #A5D6A7',
-  marginLeft: '1rem', whiteSpace: 'nowrap',
+
+const dateStyle = {
+  color: color.text.muted,
+  fontSize: font.size.caption,
 }
-const badgeDraft = {
-  padding: '0.2rem 0.5rem', borderRadius: '10px', fontSize: '0.7rem',
-  background: '#FFF8E1', color: '#F57F17', border: '1px solid #FFE082',
-  marginLeft: '1rem', whiteSpace: 'nowrap',
+
+const descStyle = {
+  flex: 1,
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  color: color.text.secondary,
 }
-const btnPost = {
-  cursor: 'pointer', background: 'transparent', color: 'var(--accent)',
-  border: '1px solid var(--accent)', borderRadius: '6px', padding: '0.25rem 0.75rem',
-  fontSize: '0.8rem', marginLeft: '1rem', whiteSpace: 'nowrap',
+
+const amountsStyle = {
+  textAlign: 'right',
+  fontSize: font.size.caption,
+  whiteSpace: 'nowrap',
+  fontVariantNumeric: 'tabular-nums',
 }
 
 export default function JournalPage() {
-  const navigate = useNavigate()
+  const toast = useToast()
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [showForm, setShowForm] = useState(false)
+  const [pendingPost, setPendingPost] = useState(null)
+  const [posting, setPosting] = useState(false)
 
   const fetchEntries = useCallback(async () => {
     setLoading(true)
@@ -60,7 +78,7 @@ export default function JournalPage() {
       if (dateTo) params.date_to = dateTo
       const { data } = await accountingService.getJournalEntries(params)
       setEntries(data)
-    } catch (err) {
+    } catch {
       setError('Failed to load journal entries.')
     } finally {
       setLoading(false)
@@ -74,93 +92,137 @@ export default function JournalPage() {
     fetchEntries()
   }
 
-  async function handlePostEntry(entry) {
+  function handlePostEntry(entry) {
+    setPendingPost(entry)
+  }
+
+  async function confirmPost() {
+    const entry = pendingPost
+    if (!entry) return
+    setPosting(true)
     setError('')
     try {
       await accountingService.postJournalEntry(entry.id)
-      fetchEntries()
+      await fetchEntries()
+      toast.success(`Journal entry "${entry.reference}" posted.`)
     } catch (err) {
       setError(err.response?.data?.detail || 'Failed to post journal entry.')
+    } finally {
+      setPosting(false)
+      setPendingPost(null)
     }
   }
 
   if (showForm) {
     return (
-      <div>
-        <AccountingNav />
-        <div style={pageStyle}>
-          <JournalEntryForm onSaved={handleSaved} onCancel={() => setShowForm(false)} />
-        </div>
-      </div>
+      <PageContainer>
+        <PageHeader
+          title="New journal entry"
+          description="Record a balanced double-entry transaction."
+          breadcrumbs={[{ label: 'Accounting' }, { label: 'Journal Entries' }, { label: 'New' }]}
+        />
+        <JournalEntryForm onSaved={handleSaved} onCancel={() => setShowForm(false)} />
+      </PageContainer>
     )
   }
 
   return (
-    <div>
-      <AccountingNav />
-      <div style={pageStyle}>
-        <div style={headerStyle}>
-          <h1 style={titleStyle}>Journal Entries</h1>
-          <button style={btnPrimary} onClick={() => setShowForm(true)}>
-            + New Entry
-          </button>
-        </div>
+    <PageContainer>
+      <PageHeader
+        title="Journal Entries"
+        description="Create and post double-entry transactions."
+        breadcrumbs={[{ label: 'Accounting' }, { label: 'Journal Entries' }]}
+        primaryAction={
+          <Button variant="primary" onClick={() => setShowForm(true)}>New Entry</Button>
+        }
+      />
 
-        <div style={filterStyle}>
-          <label style={{ fontSize: '0.8rem', color: 'var(--text)' }}>From:</label>
-          <input style={inputStyle} type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-          <label style={{ fontSize: '0.8rem', color: 'var(--text)' }}>To:</label>
-          <input style={inputStyle} type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-          {(dateFrom || dateTo) && (
-            <button style={{ ...btnPrimary, background: 'transparent', color: 'var(--text)', border: '1px solid var(--border)' }} onClick={() => { setDateFrom(''); setDateTo('') }}>
-              Clear
-            </button>
-          )}
-        </div>
-
-        {error && (
-          <div style={{ padding: '0.75rem 1rem', background: '#FFF3F3', border: '1px solid #F44336', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.875rem' }}>
-            {error}
-          </div>
-        )}
-
-        {loading ? (
-          <div>{[...Array(5)].map((_, i) => <div key={i} style={skeletonStyle} />)}</div>
-        ) : entries.length === 0 ? (
-          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text)' }}>
-            No journal entries found. Create your first entry to get started.
-          </div>
-        ) : (
-          <div style={{ border: '1px solid var(--border)', borderRadius: '8px', overflow: 'hidden' }}>
-            {entries.map((entry) => (
-              <div key={entry.id} style={rowStyle}>
-                <div>
-                  <div style={{ fontWeight: 500 }}>{entry.reference}</div>
-                  <div style={{ color: 'var(--text)', fontSize: '0.8rem' }}>{entry.date}</div>
-                </div>
-                <div style={{ flex: 1, margin: '0 1rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {entry.description}
-                </div>
-                <div style={{ textAlign: 'right', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                  <div>Dr {parseFloat(entry.total_debit).toFixed(2)}</div>
-                  <div>Cr {parseFloat(entry.total_credit).toFixed(2)}</div>
-                </div>
-                <div style={{ marginLeft: '1rem', fontSize: '0.75rem', color: 'var(--text)' }}>
-                  {entry.line_count} lines
-                </div>
-                {entry.posted
-                  ? <span style={badgePosted}>Posted</span>
-                  : <span style={badgeDraft}>Draft</span>}
-                {!entry.posted && (
-                  <button style={btnPost} onClick={() => handlePostEntry(entry)}>
-                    Post
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
+      <div style={filterStyle}>
+        <Input
+          label="From"
+          type="date"
+          value={dateFrom}
+          onChange={(e) => setDateFrom(e.target.value)}
+          style={{ width: '170px' }}
+        />
+        <Input
+          label="To"
+          type="date"
+          value={dateTo}
+          onChange={(e) => setDateTo(e.target.value)}
+          style={{ width: '170px' }}
+        />
+        {(dateFrom || dateTo) && (
+          <Button variant="ghost" onClick={() => { setDateFrom(''); setDateTo('') }}>
+            Clear
+          </Button>
         )}
       </div>
-    </div>
+
+      {error && (
+        <Alert tone="error" dismissible onDismiss={setError} style={{ marginBottom: space[4] }}>
+          {error}
+        </Alert>
+      )}
+
+      {loading ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: space[2] }} aria-busy="true">
+          {[...Array(5)].map((_, i) => (
+            <Skeleton key={i} height="56px" />
+          ))}
+        </div>
+      ) : entries.length === 0 ? (
+        <EmptyState
+          title="No journal entries yet"
+          description="Create your first double-entry transaction to get started."
+          action={<Button variant="primary" onClick={() => setShowForm(true)}>New Entry</Button>}
+        />
+      ) : (
+        <div style={listStyle}>
+          {entries.map((entry) => (
+            <div key={entry.id} style={rowStyle}>
+              <div style={{ minWidth: '140px' }}>
+                <div style={refStyle}>{entry.reference}</div>
+                <div style={dateStyle}>{entry.date}</div>
+              </div>
+              <div style={descStyle} title={entry.description}>
+                {entry.description}
+              </div>
+              <div style={amountsStyle}>
+                <div>Dr {parseFloat(entry.total_debit).toFixed(2)}</div>
+                <div>Cr {parseFloat(entry.total_credit).toFixed(2)}</div>
+              </div>
+              <div style={{ fontSize: font.size.caption, color: color.text.muted, whiteSpace: 'nowrap' }}>
+                {entry.line_count} lines
+              </div>
+              {entry.posted ? (
+                <Badge tone="success" size="sm" dot>Posted</Badge>
+              ) : (
+                <Badge tone="warning" size="sm" dot>Draft</Badge>
+              )}
+              {!entry.posted && (
+                <Button variant="secondary" size="sm" onClick={() => handlePostEntry(entry)}>
+                  Post
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={Boolean(pendingPost)}
+        title="Post journal entry"
+        description={
+          pendingPost
+            ? `Post journal entry "${pendingPost.reference}"? This will create permanent ledger records and cannot be undone.`
+            : ''
+        }
+        confirmLabel="Post"
+        loading={posting}
+        onConfirm={confirmPost}
+        onCancel={() => setPendingPost(null)}
+      />
+    </PageContainer>
   )
 }

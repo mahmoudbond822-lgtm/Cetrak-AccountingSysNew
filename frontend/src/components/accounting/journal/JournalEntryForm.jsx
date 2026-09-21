@@ -1,17 +1,14 @@
 import { useState, useEffect } from 'react'
 import JournalLineRow from './JournalLineRow'
+import { Alert } from '../../ui'
 import { accountingService } from '../../../services/accountingService'
 
 const formStyle = { maxWidth: '720px', margin: '0 auto' }
 const titleStyle = { fontSize: '1.5rem', fontWeight: 600, marginBottom: '1.5rem' }
 const fieldStyle = { display: 'flex', flexDirection: 'column', gap: '0.375rem', marginBottom: '1rem' }
 const labelStyle = { fontSize: '0.8rem', fontWeight: 500, color: 'var(--text)' }
-const inputStyle = {
-  padding: '0.5rem 0.75rem', border: '1px solid var(--border)',
-  borderRadius: '6px', fontSize: '0.875rem', outline: 'none',
-}
 const btnPrimary = {
-  cursor: 'pointer', background: 'var(--accent)', color: '#fff',
+  cursor: 'pointer', background: 'var(--brand)', color: 'var(--brand-foreground)',
   border: 'none', borderRadius: '6px', padding: '0.5rem 1rem',
   fontSize: '0.875rem', fontWeight: 500,
 }
@@ -41,6 +38,12 @@ export default function JournalEntryForm({ onSaved, onCancel }) {
   const [createdDraft, setCreatedDraft] = useState(null)
   const [error, setError] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
+
+  useEffect(() => {
+    accountingService.getNextJournalReference()
+      .then(({ data }) => setReference(data.reference || ''))
+      .catch(() => setReference(''))
+  }, [])
 
   const totals = lines.reduce((acc, line) => ({
     debit: acc.debit + (parseFloat(line.debit) || 0),
@@ -72,7 +75,6 @@ export default function JournalEntryForm({ onSaved, onCancel }) {
     const payload = {
       date,
       description,
-      reference,
       lines: lines.map((l) => ({
         account_id: l.account_id,
         debit: parseFloat(l.debit) || 0,
@@ -108,7 +110,7 @@ export default function JournalEntryForm({ onSaved, onCancel }) {
     }
   }
 
-  const hasUnsavedChanges = date !== new Date().toISOString().split('T')[0] || description || reference || lines.some(l => l.account_id || l.debit || l.credit)
+  const hasUnsavedChanges = date !== new Date().toISOString().split('T')[0] || description || lines.some(l => l.account_id || l.debit || l.credit)
 
   useEffect(() => {
     function handleBeforeUnload(e) {
@@ -126,50 +128,40 @@ export default function JournalEntryForm({ onSaved, onCancel }) {
       <h1 style={titleStyle}>New Journal Entry</h1>
 
       {error && (
-        <div style={{ padding: '0.75rem 1rem', background: '#FFF3F3', border: '1px solid #F44336', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.875rem' }}>
-          {error}
-        </div>
+        <Alert tone="error" style={{ marginBottom: '1rem' }}>{error}</Alert>
       )}
 
       {createdDraft ? (
-        <div style={{
-          padding: '1rem', background: '#F0FFF0', border: '1px solid #4CAF50',
-          borderRadius: '8px', marginBottom: '1rem', fontSize: '0.875rem',
-        }}>
-          <div style={{ fontWeight: 500, marginBottom: '0.375rem' }}>
-            Draft saved ({createdDraft.reference})
-          </div>
-          <div style={{ color: 'var(--text)' }}>
-            This entry is not yet financially effective. Post it to include it
-            in the ledger and financial reports.
-          </div>
-        </div>
+        <Alert tone="success" title={`Draft saved (${createdDraft.reference})`} style={{ marginBottom: '1rem' }}>
+          This entry is not yet financially effective. Post it to include it
+          in the ledger and financial reports.
+        </Alert>
       ) : (
         <>
           <div style={fieldStyle}>
-            <label style={labelStyle}>Date *</label>
-            <input style={inputStyle} type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+            <label style={labelStyle} htmlFor="je-date">Date *</label>
+            <input className="cetrak-input" id="je-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
           </div>
           <div style={fieldStyle}>
-            <label style={labelStyle}>Reference *</label>
-            <input style={inputStyle} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="JE-2026-001" required />
+            <label style={labelStyle} htmlFor="je-reference">Reference</label>
+            <input className="cetrak-input" id="je-reference" style={{ background: 'var(--bg-hover)' }} value={reference} readOnly placeholder="JE-2026-0001" title="Assigned automatically on save" />
           </div>
         </>
       )}
 
       <div style={fieldStyle}>
-        <label style={labelStyle}>Description *</label>
-        <textarea style={{ ...inputStyle, minHeight: '60px', resize: 'vertical' }} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Transaction description" required />
+        <label style={labelStyle} htmlFor="je-description">Description *</label>
+        <textarea className="cetrak-input" id="je-description" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Transaction description" required />
       </div>
 
       <div style={{
         ...balanceBarStyle,
-        background: totals.debit > 0 || totals.credit > 0 ? (balanced ? '#F0FFF0' : '#FFF3F3') : '#f9f9f9',
-        border: `1px solid ${totals.debit > 0 || totals.credit > 0 ? (balanced ? '#4CAF50' : '#F44336') : 'var(--border)'}`,
+        background: totals.debit > 0 || totals.credit > 0 ? (balanced ? 'var(--success-soft)' : 'var(--danger-soft)') : 'var(--bg-hover)',
+        border: `1px solid ${totals.debit > 0 || totals.credit > 0 ? (balanced ? 'var(--success)' : 'var(--danger)') : 'var(--border)'}`,
       }}>
         <span>Total Debit: <strong>{totals.debit.toFixed(4)}</strong></span>
         <span>Total Credit: <strong>{totals.credit.toFixed(4)}</strong></span>
-        <span style={{ color: totals.debit > 0 || totals.credit > 0 ? (balanced ? '#4CAF50' : '#F44336') : 'var(--text)' }}>
+        <span style={{ color: totals.debit > 0 || totals.credit > 0 ? (balanced ? 'var(--success)' : 'var(--danger)') : 'var(--text-muted)' }}>
           {totals.debit === 0 && totals.credit === 0 ? 'Enter amounts' : balanced ? '✓ Balanced' : '✗ Imbalanced'}
         </span>
       </div>
@@ -193,9 +185,7 @@ export default function JournalEntryForm({ onSaved, onCancel }) {
       </div>
 
       {fieldErrors.non_field_errors && (
-        <div style={{ padding: '0.5rem', background: '#FFF3F3', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.8rem' }}>
-          {fieldErrors.non_field_errors.join(' ')}
-        </div>
+        <Alert tone="error" style={{ marginBottom: '1rem' }}>{fieldErrors.non_field_errors.join(' ')}</Alert>
       )}
 
       <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>

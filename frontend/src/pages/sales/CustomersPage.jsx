@@ -1,18 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import SalesNav from '../../components/Layout/SalesNav'
-import Table from '../../components/shared/Table'
-import Button from '../../components/shared/Button'
 import CustomerModal from '../../components/sales/customers/CustomerModal'
 import { getAuth } from '../../services/api'
 import { salesService } from '../../services/salesService'
-
-const pageStyle = { maxWidth: '960px', margin: '0 auto', padding: '1.5rem' }
-const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }
-const titleStyle = { fontSize: '1.5rem', fontWeight: 600 }
-const skeletonStyle = {
-  height: '40px', background: '#f0f0f0', borderRadius: '6px',
-  marginBottom: '0.5rem',
-}
+import { useToast } from '../../components/ui'
+import {
+  Alert, Badge, Button, ConfirmDialog, PageContainer, PageHeader, Table,
+} from '../../components/ui'
+import { space } from '../../lib/tokens'
 
 function nextCustomerCode(customers) {
   const used = new Set()
@@ -26,6 +20,7 @@ function nextCustomerCode(customers) {
 }
 
 export default function CustomersPage() {
+  const toast = useToast()
   const { activeTenantRole } = getAuth()
   const canManage = activeTenantRole === 'Admin' || activeTenantRole === 'Accountant'
   const [customers, setCustomers] = useState([])
@@ -34,6 +29,8 @@ export default function CustomersPage() {
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [notice, setNotice] = useState('')
+  const [pendingDeactivate, setPendingDeactivate] = useState(null)
+  const [deactivating, setDeactivating] = useState(false)
   const previewRef = useRef('')
 
   const fetchCustomers = useCallback(async () => {
@@ -70,14 +67,23 @@ export default function CustomersPage() {
     setShowModal(true)
   }
 
-  async function handleDeactivate(customer) {
-    if (!window.confirm(`Deactivate customer "${customer.name}"? This action cannot be undone.`)) return
+  function handleDeactivate(customer) {
+    setPendingDeactivate(customer)
+  }
+
+  async function confirmDeactivate() {
+    const customer = pendingDeactivate
+    if (!customer) return
+    setDeactivating(true)
     try {
       await salesService.deleteCustomer(customer.id)
-      fetchCustomers()
+      await fetchCustomers()
+      toast.success(`Customer "${customer.name}" deactivated.`)
     } catch (err) {
-      const msg = err.response?.data?.detail || 'Failed to deactivate customer.'
-      alert(msg)
+      toast.error(err.response?.data?.detail || 'Failed to deactivate customer.')
+    } finally {
+      setDeactivating(false)
+      setPendingDeactivate(null)
     }
   }
 
@@ -90,16 +96,23 @@ export default function CustomersPage() {
     {
       key: 'is_active',
       label: 'Status',
-      render: (c) => (c.is_active ? 'Active' : 'Inactive'),
+      render: (c) => (
+        <Badge tone={c.is_active ? 'success' : 'neutral'} size="sm" dot>
+          {c.is_active ? 'Active' : 'Inactive'}
+        </Badge>
+      ),
     },
     ...(canManage ? [{
       key: 'actions',
       label: 'Actions',
+      isActions: true,
       render: (c) => (
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <Button variant="secondary" onClick={() => handleEdit(c)}>Edit</Button>
+        <div style={{ display: 'flex', gap: space[1], justifyContent: 'flex-end' }}>
+          <Button variant="ghost" size="sm" onClick={() => handleEdit(c)}>Edit</Button>
           {c.is_active && (
-            <Button variant="danger" onClick={() => handleDeactivate(c)}>Deactivate</Button>
+            <Button variant="dangerSoft" size="sm" onClick={() => handleDeactivate(c)}>
+              Deactivate
+            </Button>
           )}
         </div>
       ),
@@ -107,46 +120,61 @@ export default function CustomersPage() {
   ]
 
   return (
-    <div>
-      <SalesNav />
-      <div style={pageStyle}>
-        <div style={headerStyle}>
-          <h1 style={titleStyle}>Customers</h1>
-          {canManage && (
+    <PageContainer>
+      <PageHeader
+        title="Customers"
+        description="Manage your customer directory and contact details."
+        breadcrumbs={[{ label: 'Sales' }, { label: 'Customers' }]}
+        primaryAction={
+          canManage ? (
             <Button variant="primary" onClick={handleOpenCreate}>Create Customer</Button>
-          )}
-        </div>
+          ) : undefined
+        }
+      />
 
-        {notice && (
-          <div style={{ padding: '0.75rem 1rem', background: '#F0F8F0', border: '1px solid #4CAF50', borderRadius: '6px', marginBottom: '1rem', color: '#2E7D32', fontSize: '0.875rem' }}>
-            {notice}
-          </div>
-        )}
+      {notice && (
+        <Alert tone="success" dismissible onDismiss={() => setNotice('')} style={{ marginBottom: space[4] }}>
+          {notice}
+        </Alert>
+      )}
 
-        {error && (
-          <div style={{ padding: '0.75rem 1rem', background: '#FFF3F3', border: '1px solid #F44336', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.875rem' }}>
-            {error}
-          </div>
-        )}
+      {error && (
+        <Alert tone="error" dismissible onDismiss={setError} style={{ marginBottom: space[4] }}>
+          {error}
+        </Alert>
+      )}
 
-        {loading ? (
-          <div>
-            {[...Array(4)].map((_, i) => (
-              <div key={i} style={skeletonStyle} />
-            ))}
-          </div>
-        ) : (
-          <Table columns={columns} data={customers} emptyMessage="No customers found." />
-        )}
+      <Table
+        columns={columns}
+        data={customers}
+        loading={loading}
+        emptyTitle="No customers yet"
+        emptyDescription="Create your first customer to start issuing invoices."
+        emptyAction={canManage ? <Button variant="primary" onClick={handleOpenCreate}>Create Customer</Button> : undefined}
+      />
 
-        <CustomerModal
-          open={showModal}
-          onClose={() => setShowModal(false)}
-          customer={editing}
-          nextCode={nextCustomerCode(customers)}
-          onSaved={handleSaved}
-        />
-      </div>
-    </div>
+      <CustomerModal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        customer={editing}
+        nextCode={nextCustomerCode(customers)}
+        onSaved={handleSaved}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingDeactivate)}
+        title="Deactivate customer"
+        description={
+          pendingDeactivate
+            ? `Deactivate customer "${pendingDeactivate.name}"? This action cannot be undone.`
+            : ''
+        }
+        confirmLabel="Deactivate"
+        tone="danger"
+        loading={deactivating}
+        onConfirm={confirmDeactivate}
+        onCancel={() => setPendingDeactivate(null)}
+      />
+    </PageContainer>
   )
 }

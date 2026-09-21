@@ -1,28 +1,27 @@
 import { useState, useEffect, useCallback } from 'react'
-import AccountingNav from '../../components/Layout/AccountingNav'
 import AccountTree from '../../components/accounting/accounts/AccountTree'
 import CreateAccountModal from '../../components/accounting/accounts/CreateAccountModal'
 import { accountingService } from '../../services/accountingService'
+import { useToast } from '../../components/ui'
+import { Alert, Button, ConfirmDialog, PageContainer, PageHeader, Skeleton } from '../../components/ui'
+import { space } from '../../lib/tokens'
 
-const pageStyle = { maxWidth: '960px', margin: '0 auto', padding: '1.5rem' }
-const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }
-const titleStyle = { fontSize: '1.5rem', fontWeight: 600 }
-const btnPrimary = {
-  cursor: 'pointer', background: 'var(--accent)', color: '#fff',
-  border: 'none', borderRadius: '6px', padding: '0.5rem 1rem',
-  fontSize: '0.875rem', fontWeight: 500,
-}
-const skeletonStyle = {
-  height: '40px', background: '#f0f0f0', borderRadius: '6px',
-  marginBottom: '0.5rem',
+const skeletonWrapperStyle = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: space[2],
+  marginTop: space[2],
 }
 
 export default function AccountsPage() {
+  const toast = useToast()
   const [accounts, setAccounts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [pendingDeactivate, setPendingDeactivate] = useState(null)
+  const [deactivating, setDeactivating] = useState(false)
 
   const fetchAccounts = useCallback(async () => {
     setLoading(true)
@@ -30,7 +29,7 @@ export default function AccountsPage() {
     try {
       const { data } = await accountingService.getAccounts({ tree: 'true' })
       setAccounts(data)
-    } catch (err) {
+    } catch {
       setError('Failed to load accounts. Please try again.')
     } finally {
       setLoading(false)
@@ -49,56 +48,82 @@ export default function AccountsPage() {
     setShowModal(true)
   }
 
-  async function handleDeactivate(account) {
-    if (!window.confirm(`Deactivate account "${account.name}"? This action cannot be undone.`)) return
+  function handleDeactivate(account) {
+    setPendingDeactivate(account)
+  }
+
+  async function confirmDeactivate() {
+    const account = pendingDeactivate
+    if (!account) return
+    setDeactivating(true)
     try {
       await accountingService.deleteAccount(account.id)
-      fetchAccounts()
+      await fetchAccounts()
+      toast.success(`Account "${account.name}" deactivated.`)
     } catch (err) {
-      const msg = err.response?.data?.detail || 'Failed to deactivate account.'
-      alert(msg)
+      toast.error(err.response?.data?.detail || 'Failed to deactivate account.')
+    } finally {
+      setDeactivating(false)
+      setPendingDeactivate(null)
     }
   }
 
   return (
-    <div>
-      <AccountingNav />
-      <div style={pageStyle}>
-        <div style={headerStyle}>
-          <h1 style={titleStyle}>Chart of Accounts</h1>
-          <button style={btnPrimary} onClick={handleOpenCreate}>
+    <PageContainer>
+      <PageHeader
+        title="Chart of Accounts"
+        description="Manage your account structure and ledger categories."
+        breadcrumbs={[{ label: 'Accounting' }, { label: 'Chart of Accounts' }]}
+        primaryAction={
+          <Button variant="primary" onClick={handleOpenCreate}>
             Create Account
-          </button>
+          </Button>
+        }
+      />
+
+      {error && (
+        <Alert tone="error" dismissible onDismiss={setError} style={{ marginBottom: space[4] }}>
+          {error}
+        </Alert>
+      )}
+
+      {loading ? (
+        <div style={skeletonWrapperStyle} aria-busy="true" aria-live="polite">
+          <Skeleton height="44px" />
+          {[...Array(6)].map((_, i) => (
+            <Skeleton key={i} height="40px" />
+          ))}
         </div>
-
-        {error && (
-          <div style={{ padding: '0.75rem 1rem', background: '#FFF3F3', border: '1px solid #F44336', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.875rem' }}>
-            {error}
-          </div>
-        )}
-
-        {loading ? (
-          <div>
-            {[...Array(5)].map((_, i) => (
-              <div key={i} style={skeletonStyle} />
-            ))}
-          </div>
-        ) : (
-          <AccountTree
-            accounts={accounts}
-            onEdit={handleEdit}
-            onDeactivate={handleDeactivate}
-          />
-        )}
-
-        <CreateAccountModal
-          open={showModal}
-          onClose={() => setShowModal(false)}
-          account={editing}
+      ) : (
+        <AccountTree
           accounts={accounts}
-          onSaved={fetchAccounts}
+          onEdit={handleEdit}
+          onDeactivate={handleDeactivate}
         />
-      </div>
-    </div>
+      )}
+
+      <CreateAccountModal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        account={editing}
+        accounts={accounts}
+        onSaved={fetchAccounts}
+      />
+
+      <ConfirmDialog
+        open={Boolean(pendingDeactivate)}
+        title="Deactivate account"
+        description={
+          pendingDeactivate
+            ? `Deactivate account "${pendingDeactivate.name}"? This action cannot be undone.`
+            : ''
+        }
+        confirmLabel="Deactivate"
+        tone="danger"
+        loading={deactivating}
+        onConfirm={confirmDeactivate}
+        onCancel={() => setPendingDeactivate(null)}
+      />
+    </PageContainer>
   )
 }

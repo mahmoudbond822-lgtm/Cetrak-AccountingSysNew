@@ -1,17 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import SalesNav from '../../components/Layout/SalesNav'
-import Table from '../../components/shared/Table'
-import Button from '../../components/shared/Button'
 import InvoiceForm from '../../components/sales/invoices/InvoiceForm'
 import { getAuth } from '../../services/api'
 import { salesService } from '../../services/salesService'
+import { useToast } from '../../components/ui'
+import {
+  Alert, Badge, Button, ConfirmDialog, PageContainer, PageHeader, Select, Table,
+} from '../../components/ui'
+import { space } from '../../lib/tokens'
 
-const pageStyle = { maxWidth: '960px', margin: '0 auto', padding: '1.5rem' }
-const titleStyle = { fontSize: '1.5rem', fontWeight: 600 }
-const skeletonStyle = {
-  height: '40px', background: '#f0f0f0', borderRadius: '6px',
-  marginBottom: '0.5rem',
-}
 const money = (v) => Number(v || 0).toFixed(2)
 
 function nextInvoiceNumber(invoices) {
@@ -25,7 +21,10 @@ function nextInvoiceNumber(invoices) {
   return `INV-${String(n).padStart(4, '0')}`
 }
 
+const statusTone = { Draft: 'warning', Posted: 'success' }
+
 export default function InvoicesPage() {
+  const toast = useToast()
   const { activeTenantRole } = getAuth()
   const canManage = activeTenantRole === 'Admin' || activeTenantRole === 'Accountant'
   const canPost = activeTenantRole === 'Admin' || activeTenantRole === 'Accountant'
@@ -38,6 +37,8 @@ export default function InvoicesPage() {
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [notice, setNotice] = useState('')
+  const [confirm, setConfirm] = useState(null)
+  const [busy, setBusy] = useState(false)
   const previewRef = useRef('')
 
   const fetchInvoices = useCallback(async () => {
@@ -85,20 +86,36 @@ export default function InvoicesPage() {
     setShowModal(true)
   }
 
-  function handleDelete(invoice) {
-    if (!window.confirm(`Delete draft invoice "${invoice.number}"?`)) return
-    salesService.deleteInvoice(invoice.id)
-      .then(fetchInvoices)
-      .catch((err) => alert(err.response?.data?.detail || 'Failed to delete invoice.'))
+  function requestDelete(invoice) {
+    setConfirm({
+      title: 'Delete draft invoice',
+      description: `Delete draft invoice "${invoice.number}"?`,
+      confirmLabel: 'Delete',
+      tone: 'danger',
+      action: () => runAction(invoice, salesService.deleteInvoice, 'Failed to delete invoice.'),
+    })
   }
 
-  async function handlePost(invoice) {
-    if (!window.confirm(`Post invoice "${invoice.number}"? This will create a journal entry and cannot be undone.`)) return
+  function requestPost(invoice) {
+    setConfirm({
+      title: 'Post invoice',
+      description: `Post invoice "${invoice.number}"? This will create a journal entry and cannot be undone.`,
+      confirmLabel: 'Post',
+      tone: 'default',
+      action: () => runAction(invoice, salesService.postInvoice, 'Failed to post invoice.'),
+    })
+  }
+
+  async function runAction(invoice, serviceCall, errorMessage) {
+    setBusy(true)
     try {
-      await salesService.postInvoice(invoice.id)
-      fetchInvoices()
+      await serviceCall(invoice.id)
+      await fetchInvoices()
     } catch (err) {
-      alert(err.response?.data?.detail || 'Failed to post invoice.')
+      toast.error(err.response?.data?.detail || errorMessage)
+    } finally {
+      setBusy(false)
+      setConfirm(null)
     }
   }
 
@@ -106,35 +123,37 @@ export default function InvoicesPage() {
     { key: 'number', label: 'Number' },
     { key: 'customer_name', label: 'Customer' },
     { key: 'invoice_date', label: 'Date' },
-    { key: 'due_date', label: 'Due Date' },
+    { key: 'due_date', label: 'Due date' },
     {
       key: 'total',
       label: 'Total',
       align: 'right',
+      numeric: true,
       render: (i) => money(i.total),
     },
     {
       key: 'status',
       label: 'Status',
       render: (i) => (
-        <span style={{ color: i.status === 'Posted' ? '#2E7D32' : '#555' }}>
+        <Badge tone={statusTone[i.status] || 'neutral'} size="sm" dot>
           {i.status}
-        </span>
+        </Badge>
       ),
     },
     ...(canManage ? [{
       key: 'actions',
       label: 'Actions',
+      isActions: true,
       render: (i) => (
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: space[1], justifyContent: 'flex-end' }}>
           {i.status === 'Draft' && (
             <>
-              <Button variant="secondary" onClick={() => handleEdit(i)}>Edit</Button>
-              <Button variant="danger" style={{ padding: '0.5rem' }} onClick={() => handleDelete(i)}>Delete</Button>
+              <Button variant="ghost" size="sm" onClick={() => handleEdit(i)}>Edit</Button>
+              <Button variant="dangerSoft" size="sm" onClick={() => requestDelete(i)}>Delete</Button>
             </>
           )}
           {i.status === 'Draft' && canPost && (
-            <Button variant="primary" style={{ padding: '0.5rem' }} onClick={() => handlePost(i)}>Post</Button>
+            <Button variant="secondary" size="sm" onClick={() => requestPost(i)}>Post</Button>
           )}
         </div>
       ),
@@ -142,61 +161,73 @@ export default function InvoicesPage() {
   ]
 
   return (
-    <div>
-      <SalesNav />
-      <div style={pageStyle}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <h1 style={titleStyle}>Invoices</h1>
-          {canManage && (
+    <PageContainer>
+      <PageHeader
+        title="Invoices"
+        description="Create, edit and post sales invoices."
+        breadcrumbs={[{ label: 'Sales' }, { label: 'Invoices' }]}
+        primaryAction={
+          canManage ? (
             <Button variant="primary" onClick={handleOpenCreate}>New Invoice</Button>
-          )}
-        </div>
+          ) : undefined
+        }
+      />
 
-        <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <label style={{ fontSize: '0.875rem' }}>Status:</label>
-          <select
-            style={{ padding: '0.4rem 0.6rem', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.875rem' }}
+      <div style={{ display: 'flex', gap: space[3], alignItems: 'flex-end', marginBottom: space[4], flexWrap: 'wrap' }}>
+        <div style={{ width: '200px' }}>
+          <Select
+            label="Status"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
           >
             <option value="">All</option>
             <option value="Draft">Draft</option>
             <option value="Posted">Posted</option>
-          </select>
+          </Select>
         </div>
-
-        {notice && (
-          <div style={{ padding: '0.75rem 1rem', background: '#F0F8F0', border: '1px solid #4CAF50', borderRadius: '6px', marginBottom: '1rem', color: '#2E7D32', fontSize: '0.875rem' }}>
-            {notice}
-          </div>
-        )}
-
-        {error && (
-          <div style={{ padding: '0.75rem 1rem', background: '#FFF3F3', border: '1px solid #F44336', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.875rem' }}>
-            {error}
-          </div>
-        )}
-
-        {loading ? (
-          <div>
-            {[...Array(4)].map((_, i) => (
-              <div key={i} style={skeletonStyle} />
-            ))}
-          </div>
-        ) : (
-          <Table columns={columns} data={invoices} emptyMessage="No invoices found." />
-        )}
-
-        <InvoiceForm
-          key={showModal ? (editing?.id ?? 'new-open') : (editing?.id ?? 'new-closed')}
-          open={showModal}
-          onClose={() => setShowModal(false)}
-          invoice={editing}
-          customers={customers}
-          nextNumber={nextInvoiceNumber(invoices)}
-          onSaved={handleSaved}
-        />
       </div>
-    </div>
+
+      {notice && (
+        <Alert tone="success" dismissible onDismiss={() => setNotice('')} style={{ marginBottom: space[4] }}>
+          {notice}
+        </Alert>
+      )}
+
+      {error && (
+        <Alert tone="error" dismissible onDismiss={setError} style={{ marginBottom: space[4] }}>
+          {error}
+        </Alert>
+      )}
+
+      <Table
+        columns={columns}
+        data={invoices}
+        loading={loading}
+        emptyTitle="No invoices found"
+        emptyDescription="Create a draft invoice to get started."
+        emptyAction={canManage ? <Button variant="primary" onClick={handleOpenCreate}>New Invoice</Button> : undefined}
+      />
+
+      <InvoiceForm
+        key={showModal ? (editing?.id ?? 'new-open') : (editing?.id ?? 'new-closed')}
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        invoice={editing}
+        customers={customers}
+        nextNumber={nextInvoiceNumber(invoices)}
+        onSaved={handleSaved}
+      />
+
+      <ConfirmDialog
+        open={Boolean(confirm)}
+        title={confirm?.title}
+        description={confirm?.description}
+        confirmLabel={confirm?.confirmLabel}
+        tone={confirm?.tone}
+        loading={busy}
+        onConfirm={confirm?.action}
+        onCancel={() => setConfirm(null)}
+      />
+    </PageContainer>
   )
 }

@@ -1,15 +1,11 @@
 import { useState } from 'react'
-import AccountingNav from '../../components/Layout/AccountingNav'
 import ReportSelector from '../../components/accounting/reports/ReportSelector'
 import ReportTable from '../../components/accounting/reports/ReportTable'
 import { accountingService } from '../../services/accountingService'
-
-const pageStyle = { maxWidth: '960px', margin: '0 auto', padding: '1.5rem' }
-const titleStyle = { fontSize: '1.5rem', fontWeight: 600, marginBottom: '1.5rem' }
-const skeletonStyle = {
-  height: '40px', background: '#f0f0f0', borderRadius: '6px',
-  marginBottom: '0.5rem',
-}
+import {
+  Alert, Card, CardBody, EmptyState, PageContainer, PageHeader, Skeleton,
+} from '../../components/ui'
+import { space } from '../../lib/tokens'
 
 export default function ReportsPage() {
   const [data, setData] = useState(null)
@@ -37,25 +33,39 @@ export default function ReportsPage() {
   }
 
   return (
-    <div>
-      <AccountingNav />
-      <div style={pageStyle}>
-        <h1 style={titleStyle}>Financial Reports</h1>
+    <PageContainer>
+      <PageHeader
+        title="Financial Reports"
+        description="Generate trial balance, income statement and balance sheet reports."
+        breadcrumbs={[{ label: 'Accounting' }, { label: 'Reports' }]}
+      />
 
-        <ReportSelector onGenerate={handleGenerate} />
+      <ReportSelector onGenerate={handleGenerate} />
 
-        {error && (
-          <div style={{ padding: '0.75rem 1rem', background: '#FFF3F3', border: '1px solid #F44336', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.875rem' }}>
-            {error}
-          </div>
-        )}
+      {error && (
+        <Alert tone="error" dismissible onDismiss={setError} style={{ marginBottom: space[4] }}>
+          {error}
+        </Alert>
+      )}
 
-        {loading ? (
-          <div>{[...Array(5)].map((_, i) => <div key={i} style={skeletonStyle} />)}</div>
-        ) : (
-          <ReportTable data={data} />
-        )}
-      </div>
-    </div>
+      {loading ? (
+        <Card>
+          <CardBody>
+            <Skeleton count={6} height="36px" />
+          </CardBody>
+        </Card>
+      ) : data ? (
+        <Card>
+          <CardBody>
+            <ReportTable data={data} />
+          </CardBody>
+        </Card>
+      ) : (
+        <EmptyState
+          title="No report generated"
+          description="Select a report type and date range, then click Generate Report."
+        />
+      )}
+    </PageContainer>
   )
 }

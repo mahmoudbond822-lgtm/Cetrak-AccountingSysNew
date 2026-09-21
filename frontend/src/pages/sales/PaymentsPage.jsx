@@ -1,20 +1,19 @@
 import { useState, useEffect, useCallback } from 'react'
-import SalesNav from '../../components/Layout/SalesNav'
-import Table from '../../components/shared/Table'
-import Button from '../../components/shared/Button'
 import PaymentForm from '../../components/sales/payments/PaymentForm'
 import { getAuth } from '../../services/api'
 import { salesService } from '../../services/salesService'
+import { useToast } from '../../components/ui'
+import {
+  Alert, Badge, Button, ConfirmDialog, PageContainer, PageHeader, Select, Table,
+} from '../../components/ui'
+import { space } from '../../lib/tokens'
 
-const pageStyle = { maxWidth: '960px', margin: '0 auto', padding: '1.5rem' }
-const titleStyle = { fontSize: '1.5rem', fontWeight: 600 }
-const skeletonStyle = {
-  height: '40px', background: '#f0f0f0', borderRadius: '6px',
-  marginBottom: '0.5rem',
-}
 const money = (v) => Number(v || 0).toFixed(2)
 
+const statusTone = { Draft: 'warning', Posted: 'success' }
+
 export default function PaymentsPage() {
+  const toast = useToast()
   const { activeTenantRole } = getAuth()
   const canManage = activeTenantRole === 'Admin' || activeTenantRole === 'Accountant'
   const canPost = activeTenantRole === 'Admin' || activeTenantRole === 'Accountant'
@@ -26,6 +25,8 @@ export default function PaymentsPage() {
   const [error, setError] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [confirm, setConfirm] = useState(null)
+  const [busy, setBusy] = useState(false)
 
   const fetchPayments = useCallback(() => {
     salesService.getPayments(statusFilter ? { status: statusFilter } : {})
@@ -54,20 +55,36 @@ export default function PaymentsPage() {
     setShowModal(true)
   }
 
-  function handleDelete(payment) {
-    if (!window.confirm(`Delete draft payment "${payment.number}"?`)) return
-    salesService.deletePayment(payment.id)
-      .then(fetchPayments)
-      .catch((err) => alert(err.response?.data?.detail || 'Failed to delete payment.'))
+  function requestDelete(payment) {
+    setConfirm({
+      title: 'Delete draft payment',
+      description: `Delete draft payment "${payment.number}"?`,
+      confirmLabel: 'Delete',
+      tone: 'danger',
+      action: () => runAction(payment, salesService.deletePayment, 'Failed to delete payment.'),
+    })
   }
 
-  async function handlePost(payment) {
-    if (!window.confirm(`Post payment "${payment.number}"? This will create a journal entry and cannot be undone.`)) return
+  function requestPost(payment) {
+    setConfirm({
+      title: 'Post payment',
+      description: `Post payment "${payment.number}"? This will create a journal entry and cannot be undone.`,
+      confirmLabel: 'Post',
+      tone: 'default',
+      action: () => runAction(payment, salesService.postPayment, 'Failed to post payment.'),
+    })
+  }
+
+  async function runAction(payment, serviceCall, errorMessage) {
+    setBusy(true)
     try {
-      await salesService.postPayment(payment.id)
-      fetchPayments()
+      await serviceCall(payment.id)
+      await fetchPayments()
     } catch (err) {
-      alert(err.response?.data?.detail || 'Failed to post payment.')
+      toast.error(err.response?.data?.detail || errorMessage)
+    } finally {
+      setBusy(false)
+      setConfirm(null)
     }
   }
 
@@ -89,30 +106,32 @@ export default function PaymentsPage() {
       key: 'amount',
       label: 'Amount',
       align: 'right',
+      numeric: true,
       render: (p) => money(p.amount),
     },
     {
       key: 'status',
       label: 'Status',
       render: (p) => (
-        <span style={{ color: p.status === 'Posted' ? '#2E7D32' : '#555' }}>
+        <Badge tone={statusTone[p.status] || 'neutral'} size="sm" dot>
           {p.status}
-        </span>
+        </Badge>
       ),
     },
     ...(canManage ? [{
       key: 'actions',
       label: 'Actions',
+      isActions: true,
       render: (p) => (
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', gap: space[1], justifyContent: 'flex-end' }}>
           {p.status === 'Draft' && (
             <>
-              <Button variant="secondary" onClick={() => handleEdit(p)}>Edit</Button>
-              <Button variant="danger" style={{ padding: '0.5rem' }} onClick={() => handleDelete(p)}>Delete</Button>
+              <Button variant="ghost" size="sm" onClick={() => handleEdit(p)}>Edit</Button>
+              <Button variant="dangerSoft" size="sm" onClick={() => requestDelete(p)}>Delete</Button>
             </>
           )}
           {p.status === 'Draft' && canPost && (
-            <Button variant="primary" style={{ padding: '0.5rem' }} onClick={() => handlePost(p)}>Post</Button>
+            <Button variant="secondary" size="sm" onClick={() => requestPost(p)}>Post</Button>
           )}
         </div>
       ),
@@ -120,54 +139,66 @@ export default function PaymentsPage() {
   ]
 
   return (
-    <div>
-      <SalesNav />
-      <div style={pageStyle}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <h1 style={titleStyle}>Payments</h1>
-          {canManage && (
+    <PageContainer>
+      <PageHeader
+        title="Payments"
+        description="Record and post customer payments."
+        breadcrumbs={[{ label: 'Sales' }, { label: 'Payments' }]}
+        primaryAction={
+          canManage ? (
             <Button variant="primary" onClick={handleOpenCreate}>New Payment</Button>
-          )}
-        </div>
+          ) : undefined
+        }
+      />
 
-        <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <label style={{ fontSize: '0.875rem' }}>Status:</label>
-          <select
-            style={{ padding: '0.4rem 0.6rem', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.875rem' }}
+      <div style={{ display: 'flex', gap: space[3], alignItems: 'flex-end', marginBottom: space[4], flexWrap: 'wrap' }}>
+        <div style={{ width: '200px' }}>
+          <Select
+            label="Status"
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
           >
             <option value="">All</option>
             <option value="Draft">Draft</option>
             <option value="Posted">Posted</option>
-          </select>
+          </Select>
         </div>
-
-        {error && (
-          <div style={{ padding: '0.75rem 1rem', background: '#FFF3F3', border: '1px solid #F44336', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.875rem' }}>
-            {error}
-          </div>
-        )}
-
-        {loading ? (
-          <div>
-            {[...Array(4)].map((_, i) => (
-              <div key={i} style={skeletonStyle} />
-            ))}
-          </div>
-        ) : (
-          <Table columns={columns} data={payments} emptyMessage="No payments found." />
-        )}
-
-        <PaymentForm
-          key={showModal ? (editing?.id ?? 'new-open') : (editing?.id ?? 'new-closed')}
-          open={showModal}
-          onClose={() => setShowModal(false)}
-          payment={editing}
-          invoices={postedInvoices}
-          onSaved={fetchPayments}
-        />
       </div>
-    </div>
+
+      {error && (
+        <Alert tone="error" dismissible onDismiss={setError} style={{ marginBottom: space[4] }}>
+          {error}
+        </Alert>
+      )}
+
+      <Table
+        columns={columns}
+        data={payments}
+        loading={loading}
+        emptyTitle="No payments found"
+        emptyDescription="Record a customer payment to get started."
+        emptyAction={canManage ? <Button variant="primary" onClick={handleOpenCreate}>New Payment</Button> : undefined}
+      />
+
+      <PaymentForm
+        key={showModal ? (editing?.id ?? 'new-open') : (editing?.id ?? 'new-closed')}
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        payment={editing}
+        invoices={postedInvoices}
+        onSaved={fetchPayments}
+      />
+
+      <ConfirmDialog
+        open={Boolean(confirm)}
+        title={confirm?.title}
+        description={confirm?.description}
+        confirmLabel={confirm?.confirmLabel}
+        tone={confirm?.tone}
+        loading={busy}
+        onConfirm={confirm?.action}
+        onCancel={() => setConfirm(null)}
+      />
+    </PageContainer>
   )
 }

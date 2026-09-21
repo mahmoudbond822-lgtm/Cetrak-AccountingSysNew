@@ -1,15 +1,9 @@
 import { useState } from 'react'
-import Modal from '../../shared/Modal'
-import Button from '../../shared/Button'
-import Input from '../../shared/Input'
+import { Modal, Button, Input, Select, Alert } from '../../ui'
 import ProductSelect from '../../inventory/ProductSelect'
 import { salesService } from '../../../services/salesService'
 
 const fieldStyle = { display: 'flex', flexDirection: 'column', gap: '0.375rem', marginBottom: '1rem' }
-const selectStyle = {
-  padding: '0.5rem 0.75rem', border: '1px solid var(--border)',
-  borderRadius: '6px', fontSize: '0.875rem', outline: 'none',
-}
 const lineHeaderStyle = {
   display: 'grid', gridTemplateColumns: '1.5fr 1.5fr 1fr 1fr 1fr 40px',
   gap: '0.5rem', fontWeight: 600, fontSize: '0.75rem',
@@ -161,16 +155,19 @@ export default function InvoiceForm({ open, onClose, invoice, customers, nextNum
       }
     >
       <form onSubmit={handleSubmit}>
-        <div style={fieldStyle}>
-          <label style={{ fontSize: '0.8rem', fontWeight: 500 }}>Customer *</label>
-          <select style={selectStyle} name="customer_id" value={form.customer_id} onChange={handleChange} required>
-            <option value="">Select customer</option>
-            {(customers || []).map((c) => (
-              <option key={c.id} value={c.id}>{c.code} – {c.name}</option>
-            ))}
-          </select>
-          {formErrors.customer_id && <span style={{ color: '#F44336', fontSize: '0.75rem' }}>{Array.isArray(formErrors.customer_id) ? formErrors.customer_id[0] : formErrors.customer_id}</span>}
-        </div>
+        <Select
+          label="Customer *"
+          name="customer_id"
+          value={form.customer_id}
+          onChange={handleChange}
+          error={formErrors.customer_id ? (Array.isArray(formErrors.customer_id) ? formErrors.customer_id[0] : formErrors.customer_id) : undefined}
+          required
+        >
+          <option value="">Select customer</option>
+          {(customers || []).map((c) => (
+            <option key={c.id} value={c.id}>{c.code} – {c.name}</option>
+          ))}
+        </Select>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
           {invoice ? (
             <Input label="Invoice Number" value={form.number} readOnly />
@@ -198,25 +195,25 @@ export default function InvoiceForm({ open, onClose, invoice, customers, nextNum
                 includeEmpty
               />
               <input
-                style={{ padding: '0.4rem 0.6rem', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.85rem' }}
+                className="cetrak-input"
                 placeholder="Item description"
                 value={l.description}
                 onChange={(e) => handleLineChange(l.key, 'description', e.target.value)}
               />
               <input
-                style={{ padding: '0.4rem 0.6rem', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.85rem' }}
+                className="cetrak-input"
                 type="number" min="0" step="any"
                 value={l.quantity}
                 onChange={(e) => handleLineChange(l.key, 'quantity', e.target.value)}
               />
               <input
-                style={{ padding: '0.4rem 0.6rem', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.85rem' }}
+                className="cetrak-input"
                 type="number" min="0" step="any"
                 value={l.unit_price}
                 onChange={(e) => handleLineChange(l.key, 'unit_price', e.target.value)}
               />
               <input
-                style={{ padding: '0.4rem 0.6rem', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.85rem' }}
+                className="cetrak-input"
                 type="number" min="0" max="100" step="any"
                 value={l.tax_rate}
                 onChange={(e) => handleLineChange(l.key, 'tax_rate', e.target.value)}
@@ -242,7 +239,7 @@ export default function InvoiceForm({ open, onClose, invoice, customers, nextNum
           <Input label="Notes" name="notes" value={form.notes} onChange={handleChange} />
         </div>
         {formErrors.general && (
-          <div style={{ padding: '0.5rem', background: '#FFF3F3', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.8rem' }}>{formErrors.general}</div>
+          <Alert tone="error" style={{ marginBottom: '1rem' }}>{formErrors.general}</Alert>
         )}
       </form>
     </Modal>

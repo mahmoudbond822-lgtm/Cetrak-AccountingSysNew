@@ -8,15 +8,9 @@ const rowStyle = {
   marginBottom: '0.5rem',
 }
 
-const inputStyle = {
-  padding: '0.5rem 0.75rem', border: '1px solid var(--border)',
-  borderRadius: '6px', fontSize: '0.875rem', outline: 'none', width: '100%',
-  boxSizing: 'border-box',
-}
-
 const btnRemove = {
   cursor: 'pointer', background: 'none', border: 'none',
-  color: '#F44336', fontSize: '1.25rem', padding: '0.25rem',
+  color: 'var(--danger)', fontSize: '1.25rem', padding: '0.25rem',
   display: 'flex', alignItems: 'center', justifyContent: 'center',
 }
 
@@ -33,28 +27,34 @@ export default function JournalLineRow({ line, index, onChange, onRemove, disabl
         placeholder="Select account..."
       />
       <input
-        style={inputStyle}
+        className="cetrak-input"
         type="number"
         step="0.0001"
         min="0"
         placeholder="0.00"
+        aria-label={`Debit (line ${index + 1})`}
         value={line.debit}
         onChange={(e) => {
-          handleField('debit', e.target.value)
-          if (e.target.value && parseFloat(e.target.value) > 0) handleField('credit', '')
+          const value = e.target.value
+          const updatedLine = { ...line, debit: value }
+          if (value && parseFloat(value) > 0) updatedLine.credit = ''
+          onChange(index, updatedLine)
         }}
         disabled={disabled}
       />
       <input
-        style={inputStyle}
+        className="cetrak-input"
         type="number"
         step="0.0001"
         min="0"
         placeholder="0.00"
+        aria-label={`Credit (line ${index + 1})`}
         value={line.credit}
         onChange={(e) => {
-          handleField('credit', e.target.value)
-          if (e.target.value && parseFloat(e.target.value) > 0) handleField('debit', '')
+          const value = e.target.value
+          const updatedLine = { ...line, credit: value }
+          if (value && parseFloat(value) > 0) updatedLine.debit = ''
+          onChange(index, updatedLine)
         }}
         disabled={disabled}
       />

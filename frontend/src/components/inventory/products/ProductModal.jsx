@@ -1,7 +1,5 @@
 import { useState } from 'react'
-import Modal from '../../shared/Modal'
-import Button from '../../shared/Button'
-import Input from '../../shared/Input'
+import { Modal, Button, Input, Alert } from '../../ui'
 import { inventoryService } from '../../../services/inventoryService'
 
 const fieldStyle = { display: 'flex', flexDirection: 'column', gap: '0.375rem', marginBottom: '1rem' }
@@ -92,7 +90,7 @@ export default function ProductModal({ open, onClose, product, onSaved }) {
         </label>
         <Input label="Product ID" name="id" value={product ? product.id : ''} disabled />
         {formErrors.general && (
-          <div style={{ padding: '0.5rem', background: '#FFF3F3', borderRadius: '6px', marginTop: '1rem', color: '#F44336', fontSize: '0.8rem' }}>{formErrors.general}</div>
+          <Alert tone="error" style={{ marginTop: '1rem' }}>{formErrors.general}</Alert>
         )}
       </form>
     </Modal>

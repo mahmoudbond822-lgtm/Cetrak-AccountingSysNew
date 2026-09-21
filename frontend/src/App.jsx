@@ -1,4 +1,5 @@
 ﻿import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { ToastProvider } from './components/ui'
 import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import DashboardPage from './pages/DashboardPage'
@@ -20,33 +21,33 @@ import ProductsPage from './pages/inventory/ProductsPage'
 import StockPage from './pages/inventory/StockPage'
 import AdjustmentsPage from './pages/inventory/AdjustmentsPage'
 import InventorySettingsPage from './pages/inventory/InventorySettingsPage'
-import ProtectedRoute from './components/Layout/ProtectedRoute'
-import AppLayout from './components/Layout/AppLayout'
-import { Outlet } from 'react-router-dom'
+import ProtectedRoute from './components/layout/ProtectedRoute'
+import AppShell from './components/layout/AppShell'
 
 function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route
-          path="/tenant-select"
-          element={
-            <ProtectedRoute>
-              <TenantSelectPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route element={<AppLayout />}>
+    <ToastProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
           <Route
-            path="/team"
+            path="/tenant-select"
             element={
               <ProtectedRoute>
-                <TeamPage />
+                <TenantSelectPage />
               </ProtectedRoute>
             }
           />
+          <Route element={<AppShell />}>
+            <Route
+              path="/team"
+              element={
+                <ProtectedRoute>
+                  <TeamPage />
+                </ProtectedRoute>
+              }
+            />
           <Route
             path="/accounting/accounts"
             element={
@@ -184,8 +185,9 @@ function App() {
             }
           />
         </Route>
-      </Routes>
-    </BrowserRouter>
+        </Routes>
+      </BrowserRouter>
+    </ToastProvider>
   )
 }
 

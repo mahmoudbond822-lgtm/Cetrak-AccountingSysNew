@@ -1,7 +1,5 @@
 import { useState } from 'react'
-import Modal from '../../shared/Modal'
-import Button from '../../shared/Button'
-import Input from '../../shared/Input'
+import { Modal, Button, Input, Alert } from '../../ui'
 import { purchasesService } from '../../../services/purchasesService'
 
 const fieldStyle = { display: 'flex', flexDirection: 'column', gap: '0.375rem', marginBottom: '1rem' }
@@ -104,7 +102,7 @@ export default function VendorModal({ open, onClose, vendor, nextCode, onSaved }
           <Input label="Address" name="address" value={form.address} onChange={handleChange} error={formErrors.address} />
         </div>
         {formErrors.general && (
-          <div style={{ padding: '0.5rem', background: '#FFF3F3', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.8rem' }}>{formErrors.general}</div>
+          <Alert tone="error" style={{ marginBottom: '1rem' }}>{formErrors.general}</Alert>
         )}
       </form>
     </Modal>

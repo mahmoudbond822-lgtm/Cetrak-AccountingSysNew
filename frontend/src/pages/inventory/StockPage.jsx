@@ -1,19 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
-import InventoryNav from '../../components/Layout/InventoryNav'
-import Table from '../../components/shared/Table'
 import ProductSelect from '../../components/inventory/ProductSelect'
 import { inventoryService } from '../../services/inventoryService'
+import {
+  Alert, Card, CardBody, PageContainer, PageHeader, Select, Skeleton, Table,
+} from '../../components/ui'
+import { font, space } from '../../lib/tokens'
 
-const pageStyle = { maxWidth: '1024px', margin: '0 auto', padding: '1.5rem' }
-const titleStyle = { fontSize: '1.5rem', fontWeight: 600, marginBottom: '1.5rem' }
-const sectionStyle = { marginBottom: '2rem' }
-const sectionTitleStyle = { fontSize: '1.125rem', fontWeight: 600, marginBottom: '0.75rem' }
-const filtersStyle = { display: 'flex', gap: '1rem', alignItems: 'flex-end', marginBottom: '1rem', maxWidth: '600px' }
-const filterColStyle = { width: '280px' }
-const skeletonStyle = {
-  height: '40px', background: '#f0f0f0', borderRadius: '6px',
-  marginBottom: '0.5rem',
-}
 const fmt = (v) => Number(v || 0).toFixed(4)
 
 export default function StockPage() {
@@ -48,9 +40,27 @@ export default function StockPage() {
     { key: 'product_sku', label: 'SKU' },
     { key: 'product_name', label: 'Product' },
     { key: 'warehouse_name', label: 'Warehouse' },
-    { key: 'quantity', label: 'Quantity', render: (v) => fmt(v.quantity) },
-    { key: 'value', label: 'Value', render: (v) => fmt(v.value) },
-    { key: 'moving_avg_cost', label: 'Avg Cost', render: (v) => fmt(v.moving_avg_cost) },
+    {
+      key: 'quantity',
+      label: 'Quantity',
+      align: 'right',
+      numeric: true,
+      render: (v) => fmt(v.quantity),
+    },
+    {
+      key: 'value',
+      label: 'Value',
+      align: 'right',
+      numeric: true,
+      render: (v) => fmt(v.value),
+    },
+    {
+      key: 'moving_avg_cost',
+      label: 'Avg Cost',
+      align: 'right',
+      numeric: true,
+      render: (v) => fmt(v.moving_avg_cost),
+    },
   ]
 
   const movementColumns = [
@@ -58,9 +68,27 @@ export default function StockPage() {
     { key: 'product_sku', label: 'SKU' },
     { key: 'product_name', label: 'Product' },
     { key: 'movement_type', label: 'Type', render: (v) => v.movement_type },
-    { key: 'quantity', label: 'Qty', render: (v) => fmt(v.quantity) },
-    { key: 'unit_cost', label: 'Unit Cost', render: (v) => fmt(v.unit_cost) },
-    { key: 'value', label: 'Value', render: (v) => fmt(v.value) },
+    {
+      key: 'quantity',
+      label: 'Qty',
+      align: 'right',
+      numeric: true,
+      render: (v) => fmt(v.quantity),
+    },
+    {
+      key: 'unit_cost',
+      label: 'Unit Cost',
+      align: 'right',
+      numeric: true,
+      render: (v) => fmt(v.unit_cost),
+    },
+    {
+      key: 'value',
+      label: 'Value',
+      align: 'right',
+      numeric: true,
+      render: (v) => fmt(v.value),
+    },
     {
       key: 'source',
       label: 'Source',
@@ -69,61 +97,75 @@ export default function StockPage() {
   ]
 
   return (
-    <div>
-      <InventoryNav />
-      <div style={pageStyle}>
-        <h1 style={titleStyle}>Stock</h1>
+    <PageContainer>
+      <PageHeader
+        title="Stock"
+        description="Current stock balances per warehouse and the full movement history."
+        breadcrumbs={[{ label: 'Inventory' }, { label: 'Stock' }]}
+      />
 
-        {error && (
-          <div style={{ padding: '0.75rem 1rem', background: '#FFF3F3', border: '1px solid #F44336', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.875rem' }}>
-            {error}
-          </div>
-        )}
+      {error && (
+        <Alert tone="error" dismissible onDismiss={setError} style={{ marginBottom: space[4] }}>
+          {error}
+        </Alert>
+      )}
 
-        <div style={filtersStyle}>
-          <div style={filterColStyle}>
-            <ProductSelect
-              label="Product"
-              value={productId}
-              onChange={setProductId}
-              placeholder="All products"
-              includeEmpty
+      <div style={{ display: 'flex', gap: space[3], alignItems: 'flex-end', marginBottom: space[4], maxWidth: '600px', flexWrap: 'wrap' }}>
+        <div style={{ width: '280px' }}>
+          <ProductSelect
+            label="Product"
+            value={productId}
+            onChange={setProductId}
+            placeholder="All products"
+            includeEmpty
+          />
+        </div>
+        <div style={{ width: '280px' }}>
+          <Select
+            label="Movement Type"
+            value={movementType}
+            onChange={(e) => setMovementType(e.target.value)}
+          >
+            <option value="">All types</option>
+            <option value="Receipt">Receipt</option>
+            <option value="Issue">Issue</option>
+            <option value="Adjustment">Adjustment</option>
+          </Select>
+        </div>
+      </div>
+
+      {loading ? (
+        <Card>
+          <CardBody>
+            <Skeleton count={4} height="38px" />
+          </CardBody>
+        </Card>
+      ) : (
+        <>
+          <div style={{ marginBottom: space[6] }}>
+            <h2 style={{ fontSize: font.size.sectionTitle, fontWeight: font.weight.semibold, marginBottom: space[3] }}>
+              Stock Balances
+            </h2>
+            <Table
+              columns={balanceColumns}
+              data={balances}
+              emptyTitle="No stock balances"
+              emptyDescription="Balances appear here once you post receipts or adjustments."
             />
           </div>
-          <div style={filterColStyle}>
-            <label style={{ fontSize: '0.8rem', fontWeight: 500 }}>Movement Type</label>
-            <select
-              style={{ padding: '0.5rem 0.75rem', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.875rem', outline: 'none', width: '100%', boxSizing: 'border-box', background: '#fff', marginTop: '0.25rem' }}
-              value={movementType}
-              onChange={(e) => setMovementType(e.target.value)}
-            >
-              <option value="">All types</option>
-              <option value="Receipt">Receipt</option>
-              <option value="Issue">Issue</option>
-              <option value="Adjustment">Adjustment</option>
-            </select>
+          <div style={{ marginBottom: space[6] }}>
+            <h2 style={{ fontSize: font.size.sectionTitle, fontWeight: font.weight.semibold, marginBottom: space[3] }}>
+              Stock Movements
+            </h2>
+            <Table
+              columns={movementColumns}
+              data={movements}
+              emptyTitle="No stock movements"
+              emptyDescription="Receipts, issues and adjustments will be listed here."
+            />
           </div>
-        </div>
-
-        {loading ? (
-          <div>
-            {[...Array(3)].map((_, i) => (
-              <div key={i} style={skeletonStyle} />
-            ))}
-          </div>
-        ) : (
-          <>
-            <div style={sectionStyle}>
-              <h2 style={sectionTitleStyle}>Stock Balances</h2>
-              <Table columns={balanceColumns} data={balances} emptyMessage="No stock balances." />
-            </div>
-            <div style={sectionStyle}>
-              <h2 style={sectionTitleStyle}>Stock Movements</h2>
-              <Table columns={movementColumns} data={movements} emptyMessage="No stock movements." />
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+        </>
+      )}
+    </PageContainer>
   )
 }

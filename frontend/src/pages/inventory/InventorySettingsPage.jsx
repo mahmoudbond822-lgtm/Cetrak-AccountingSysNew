@@ -1,14 +1,29 @@
 import { useState, useEffect, useCallback } from 'react'
-import InventoryNav from '../../components/Layout/InventoryNav'
-import Button from '../../components/shared/Button'
 import AccountSelect from '../../components/accounting/journal/AccountSelect'
 import { getAuth } from '../../services/api'
 import { inventoryService } from '../../services/inventoryService'
+import {
+  Alert, Button, Card, CardBody, PageContainer, PageHeader, Skeleton,
+} from '../../components/ui'
+import { font, space } from '../../lib/tokens'
 
-const pageStyle = { maxWidth: '720px', margin: '0 auto', padding: '1.5rem' }
-const titleStyle = { fontSize: '1.5rem', fontWeight: 600, marginBottom: '1.5rem' }
-const fieldStyle = { display: 'flex', flexDirection: 'column', gap: '0.375rem', marginBottom: '1.25rem' }
-const labelStyle = { fontSize: '0.875rem', fontWeight: 500 }
+const fieldStyle = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: space[2],
+  marginBottom: space[5],
+}
+
+const labelStyle = {
+  fontSize: font.size.label,
+  fontWeight: font.weight.medium,
+}
+
+const helperStyle = {
+  fontSize: font.size.bodySmall,
+  color: 'var(--text-muted)',
+  marginBottom: space[5],
+}
 
 export default function InventorySettingsPage() {
   const { activeTenantRole } = getAuth()
@@ -67,39 +82,55 @@ export default function InventorySettingsPage() {
 
   if (activeTenantRole !== 'Admin') {
     return (
-      <div>
-        <InventoryNav />
-        <div style={pageStyle}>
-          <p>Only administrators can configure inventory settings.</p>
-        </div>
-      </div>
+      <PageContainer>
+        <PageHeader title="Inventory Settings" />
+        <Card>
+          <CardBody>
+            <p style={helperStyle}>Only administrators can configure inventory settings.</p>
+          </CardBody>
+        </Card>
+      </PageContainer>
     )
   }
 
   return (
-    <div>
-      <InventoryNav />
-      <div style={pageStyle}>
-        <h1 style={titleStyle}>Inventory Settings</h1>
-        <p style={{ fontSize: '0.875rem', color: 'var(--text)', marginBottom: '1.5rem' }}>
-          These accounts are used when posting stock receipts, sales (COGS) and
-          adjustments. The default warehouse is created automatically and used
-          for all posting.
-        </p>
+    <PageContainer>
+      <PageHeader
+        title="Inventory Settings"
+        description="Default accounts and warehouse used when posting stock movements."
+        breadcrumbs={[{ label: 'Inventory' }, { label: 'Settings' }]}
+      />
 
-        {error && (
-          <div style={{ padding: '0.75rem 1rem', background: '#FFF3F3', border: '1px solid #F44336', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.875rem' }}>
-            {error}
-          </div>
-        )}
+      <p style={helperStyle}>
+        These accounts are used when posting stock receipts, sales (COGS) and
+        adjustments. The default warehouse is created automatically and used
+        for all posting.
+      </p>
 
-        {loading ? (
-          <div style={{ color: 'var(--text)', fontSize: '0.875rem' }}>Loading...</div>
-        ) : (
-          <div>
+      {error && (
+        <Alert tone="error" dismissible onDismiss={setError} style={{ marginBottom: space[4] }}>
+          {error}
+        </Alert>
+      )}
+
+      {loading ? (
+        <Card>
+          <CardBody>
+            <Skeleton count={4} height="38px" />
+          </CardBody>
+        </Card>
+      ) : (
+        <Card>
+          <CardBody>
             <div style={fieldStyle}>
               <label style={labelStyle}>Default Warehouse</label>
-              <div style={{ padding: '0.5rem 0.75rem', border: '1px solid var(--border)', borderRadius: '6px', fontSize: '0.875rem', background: '#f9f9f9' }}>
+              <div style={{
+                padding: `${space[2]} ${space[3]}`,
+                border: '1px solid var(--border)',
+                borderRadius: '6px',
+                fontSize: font.size.bodySmall,
+                background: 'var(--bg-hover)',
+              }}>
                 {warehouseName}
               </div>
             </div>
@@ -127,15 +158,17 @@ export default function InventorySettingsPage() {
                 placeholder="Select Expense account..."
               />
             </div>
-            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-              <Button variant="primary" onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving...' : 'Save Settings'}
+            <div style={{ display: 'flex', gap: space[3], alignItems: 'center' }}>
+              <Button variant="primary" onClick={handleSave} loading={saving}>
+                {saving ? 'Saving…' : 'Save Settings'}
               </Button>
-              {saved && <span style={{ color: '#2E7D32', fontSize: '0.875rem' }}>Saved.</span>}
+              {saved && (
+                <Alert tone="success" style={{ marginBottom: 0 }}>Saved.</Alert>
+              )}
             </div>
-          </div>
-        )}
-      </div>
-    </div>
+          </CardBody>
+        </Card>
+      )}
+    </PageContainer>
   )
 }

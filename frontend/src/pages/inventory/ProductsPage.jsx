@@ -1,22 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
-import InventoryNav from '../../components/Layout/InventoryNav'
-import Table from '../../components/shared/Table'
-import Button from '../../components/shared/Button'
-import Input from '../../components/shared/Input'
 import ProductModal from '../../components/inventory/products/ProductModal'
 import { getAuth } from '../../services/api'
 import { inventoryService } from '../../services/inventoryService'
-
-const pageStyle = { maxWidth: '960px', margin: '0 auto', padding: '1.5rem' }
-const headerStyle = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }
-const titleStyle = { fontSize: '1.5rem', fontWeight: 600 }
-const skeletonStyle = {
-  height: '40px', background: '#f0f0f0', borderRadius: '6px',
-  marginBottom: '0.5rem',
-}
-const searchStyle = { width: '240px', marginBottom: '1rem' }
+import { useToast } from '../../components/ui'
+import {
+  Alert, Badge, Button, ConfirmDialog, Input, PageContainer, PageHeader, Table,
+} from '../../components/ui'
+import { space } from '../../lib/tokens'
 
 export default function ProductsPage() {
+  const toast = useToast()
   const { activeTenantRole } = getAuth()
   const canManage = activeTenantRole === 'Admin' || activeTenantRole === 'Accountant'
   const [products, setProducts] = useState([])
@@ -25,6 +18,8 @@ export default function ProductsPage() {
   const [query, setQuery] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
+  const [confirm, setConfirm] = useState(null)
+  const [busy, setBusy] = useState(false)
 
   const fetchProducts = useCallback(() => {
     inventoryService.getProducts()
@@ -45,14 +40,26 @@ export default function ProductsPage() {
     setShowModal(true)
   }
 
-  async function handleDeactivate(product) {
-    if (!window.confirm(`Deactivate product "${product.sku}"? This action cannot be undone if stock exists.`)) return
+  function requestDeactivate(product) {
+    setConfirm({
+      title: 'Deactivate product',
+      description: `Deactivate product "${product.sku}"? This action cannot be undone if stock exists.`,
+      confirmLabel: 'Deactivate',
+      tone: 'danger',
+      action: () => runAction(product, inventoryService.deleteProduct, 'Failed to deactivate product.'),
+    })
+  }
+
+  async function runAction(product, serviceCall, errorMessage) {
+    setBusy(true)
     try {
-      await inventoryService.deleteProduct(product.id)
-      fetchProducts()
+      await serviceCall(product.id)
+      await fetchProducts()
     } catch (err) {
-      const msg = err.response?.data?.detail || 'Failed to deactivate product.'
-      alert(msg)
+      toast.error(err.response?.data?.detail || errorMessage)
+    } finally {
+      setBusy(false)
+      setConfirm(null)
     }
   }
 
@@ -68,16 +75,23 @@ export default function ProductsPage() {
     {
       key: 'is_active',
       label: 'Status',
-      render: (v) => (v.is_active ? 'Active' : 'Inactive'),
+      render: (v) => (
+        <Badge tone={v.is_active ? 'success' : 'neutral'} size="sm" dot>
+          {v.is_active ? 'Active' : 'Inactive'}
+        </Badge>
+      ),
     },
     ...(canManage ? [{
       key: 'actions',
       label: 'Actions',
+      isActions: true,
       render: (v) => (
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <Button variant="secondary" onClick={() => handleEdit(v)}>Edit</Button>
+        <div style={{ display: 'flex', gap: space[1], justifyContent: 'flex-end' }}>
+          <Button variant="ghost" size="sm" onClick={() => handleEdit(v)}>Edit</Button>
           {v.is_active && (
-            <Button variant="danger" onClick={() => handleDeactivate(v)}>Deactivate</Button>
+            <Button variant="dangerSoft" size="sm" onClick={() => requestDeactivate(v)}>
+              Deactivate
+            </Button>
           )}
         </div>
       ),
@@ -85,43 +99,54 @@ export default function ProductsPage() {
   ]
 
   return (
-    <div>
-      <InventoryNav />
-      <div style={pageStyle}>
-        <div style={headerStyle}>
-          <h1 style={titleStyle}>Products</h1>
-          {canManage && (
+    <PageContainer>
+      <PageHeader
+        title="Products"
+        description="Manage your product catalogue, units and stock-keeping codes."
+        breadcrumbs={[{ label: 'Inventory' }, { label: 'Products' }]}
+        primaryAction={
+          canManage ? (
             <Button variant="primary" onClick={handleOpenCreate}>Create Product</Button>
-          )}
-        </div>
+          ) : undefined
+        }
+      />
 
-        {error && (
-          <div style={{ padding: '0.75rem 1rem', background: '#FFF3F3', border: '1px solid #F44336', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.875rem' }}>
-            {error}
-          </div>
-        )}
+      {error && (
+        <Alert tone="error" dismissible onDismiss={setError} style={{ marginBottom: space[4] }}>
+          {error}
+        </Alert>
+      )}
 
-        <div style={searchStyle}>
-          <Input placeholder="Search SKU or name..." value={query} onChange={(e) => setQuery(e.target.value)} />
-        </div>
-
-        {loading ? (
-          <div>
-            {[...Array(4)].map((_, i) => (
-              <div key={i} style={skeletonStyle} />
-            ))}
-          </div>
-        ) : (
-          <Table columns={columns} data={filtered} emptyMessage="No products found." />
-        )}
-
-        <ProductModal
-          open={showModal}
-          onClose={() => setShowModal(false)}
-          product={editing}
-          onSaved={fetchProducts}
-        />
+      <div style={{ width: '240px', marginBottom: space[4] }}>
+        <Input placeholder="Search SKU or name..." value={query} onChange={(e) => setQuery(e.target.value)} />
       </div>
-    </div>
+
+      <Table
+        columns={columns}
+        data={filtered}
+        loading={loading}
+        emptyTitle="No products found"
+        emptyDescription="Create your first product to start tracking stock."
+        emptyAction={canManage ? <Button variant="primary" onClick={handleOpenCreate}>Create Product</Button> : undefined}
+      />
+
+      <ProductModal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        product={editing}
+        onSaved={fetchProducts}
+      />
+
+      <ConfirmDialog
+        open={Boolean(confirm)}
+        title={confirm?.title}
+        description={confirm?.description}
+        confirmLabel={confirm?.confirmLabel}
+        tone={confirm?.tone}
+        loading={busy}
+        onConfirm={confirm?.action}
+        onCancel={() => setConfirm(null)}
+      />
+    </PageContainer>
   )
 }

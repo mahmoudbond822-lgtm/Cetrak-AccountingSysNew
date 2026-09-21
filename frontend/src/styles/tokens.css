@@ -1,0 +1,179 @@
+/**
+ * Cetrak design tokens — light theme (default).
+ * Single source of truth for all color, typography, spacing, radius, shadow.
+ * Dark theme override in the `prefers-color-scheme: dark` block below.
+ */
+:root {
+  /* ---------- Background ---------- */
+  --bg-app: #f6f6f8;
+  --bg-surface: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-hover: #f1f1f4;
+  --bg-active: #e9e9ee;
+
+  /* ---------- Border ---------- */
+  --border: #e4e4e9;
+  --border-subtle: #efeff3;
+  --border-strong: #cfced6;
+
+  /* ---------- Text ---------- */
+  --text: #1c1b22;
+  --text-secondary: #54535e;
+  --text-muted: #7a7986;
+  --text-disabled: #a8a7b0;
+  --text-inverse: #ffffff;
+
+  /* ---------- Brand (purple) ---------- */
+  --brand: #7c3aed;
+  --brand-hover: #6d28d9;
+  --brand-active: #5b21b6;
+  --brand-soft: rgba(124, 58, 237, 0.10);
+  --brand-soft-hover: rgba(124, 58, 237, 0.16);
+  --brand-foreground: #ffffff;
+
+  /* ---------- Semantic ---------- */
+  --success: #15803d;
+  --success-soft: rgba(21, 128, 61, 0.10);
+  --success-soft-hover: rgba(21, 128, 61, 0.16);
+  --warning: #b45309;
+  --warning-soft: rgba(180, 83, 9, 0.10);
+  --warning-soft-hover: rgba(180, 83, 9, 0.16);
+  --danger: #dc2626;
+  --danger-soft: rgba(220, 38, 38, 0.10);
+  --danger-soft-hover: rgba(220, 38, 38, 0.16);
+  --info: #2563eb;
+  --info-soft: rgba(37, 99, 235, 0.10);
+  --info-soft-hover: rgba(37, 99, 235, 0.16);
+
+  /* ---------- Accounting semantics ---------- */
+  --accounting-asset: #047857;
+  --accounting-asset-soft: rgba(4, 120, 87, 0.10);
+  --accounting-liability: #b91c1c;
+  --accounting-liability-soft: rgba(185, 28, 28, 0.10);
+  --accounting-equity: #1d4ed8;
+  --accounting-equity-soft: rgba(29, 78, 216, 0.10);
+  --accounting-revenue: #b45309;
+  --accounting-revenue-soft: rgba(180, 83, 9, 0.10);
+  --accounting-expense: #7c3aed;
+  --accounting-expense-soft: rgba(124, 58, 237, 0.10);
+
+  /* ---------- Typography ---------- */
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Code', Consolas, monospace;
+
+  --text-display: 30px;
+  --text-page-title: 22px;
+  --text-section-title: 17px;
+  --text-card-title: 15px;
+  --text-body: 14px;
+  --text-body-small: 13px;
+  --text-caption: 12px;
+  --text-label: 13px;
+
+  --leading-tight: 1.2;
+  --leading-snug: 1.35;
+  --leading-normal: 1.5;
+
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+
+  /* ---------- Spacing (4px base) ---------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ---------- Radius ---------- */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+
+  /* ---------- Shadow (subtle only) ---------- */
+  --shadow-xs: 0 1px 2px rgba(16, 17, 24, 0.05);
+  --shadow-sm: 0 2px 6px rgba(16, 17, 24, 0.06);
+  --shadow-md: 0 6px 18px rgba(16, 17, 24, 0.10);
+  --shadow-lg: 0 16px 44px rgba(16, 17, 24, 0.18);
+
+  /* ---------- Focus ---------- */
+  --focus-ring: 0 0 0 2px var(--bg-surface), 0 0 0 4px var(--brand);
+
+  /* ---------- Layout ---------- */
+  --sidebar-width: 248px;
+  --sidebar-width-collapsed: 64px;
+  --topbar-height: 56px;
+  --content-width: 1200px;
+
+  /* ---------- Z-index ---------- */
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-drawer: 900;
+  --z-modal: 1000;
+  --z-toast: 1100;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-app: #0f1015;
+    --bg-surface: #16171d;
+    --bg-elevated: #1d1f27;
+    --bg-hover: #22242e;
+    --bg-active: #2a2d39;
+
+    --border: #2b2e39;
+    --border-subtle: #232530;
+    --border-strong: #3a3d4c;
+
+    --text: #eceef3;
+    --text-secondary: #a8abb8;
+    --text-muted: #7d8190;
+    --text-disabled: #5c5f6c;
+    --text-inverse: #0f1015;
+
+    --brand: #a78bfa;
+    --brand-hover: #b79dfd;
+    --brand-active: #8b5cf6;
+    --brand-soft: rgba(167, 139, 250, 0.16);
+    --brand-soft-hover: rgba(167, 139, 250, 0.24);
+    --brand-foreground: #14101f;
+
+    --success: #4ade80;
+    --success-soft: rgba(74, 222, 128, 0.15);
+    --success-soft-hover: rgba(74, 222, 128, 0.22);
+    --warning: #fbbf24;
+    --warning-soft: rgba(251, 191, 36, 0.15);
+    --warning-soft-hover: rgba(251, 191, 36, 0.22);
+    --danger: #f87171;
+    --danger-soft: rgba(248, 113, 113, 0.15);
+    --danger-soft-hover: rgba(248, 113, 113, 0.22);
+    --info: #60a5fa;
+    --info-soft: rgba(96, 165, 250, 0.15);
+    --info-soft-hover: rgba(96, 165, 250, 0.22);
+
+    --accounting-asset: #34d399;
+    --accounting-asset-soft: rgba(52, 211, 153, 0.15);
+    --accounting-liability: #f87171;
+    --accounting-liability-soft: rgba(248, 113, 113, 0.15);
+    --accounting-equity: #60a5fa;
+    --accounting-equity-soft: rgba(96, 165, 250, 0.15);
+    --accounting-revenue: #fbbf24;
+    --accounting-revenue-soft: rgba(251, 191, 36, 0.15);
+    --accounting-expense: #a78bfa;
+    --accounting-expense-soft: rgba(167, 139, 250, 0.15);
+
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.28);
+    --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.32);
+    --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.40);
+    --shadow-lg: 0 16px 44px rgba(0, 0, 0, 0.55);
+
+    color-scheme: dark;
+  }
+}

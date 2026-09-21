@@ -1,21 +1,14 @@
 import { useState } from 'react'
-import Modal from '../../shared/Modal'
-import Button from '../../shared/Button'
-import Input from '../../shared/Input'
 import { accountingService } from '../../../services/accountingService'
+import { Alert, Button, FormField, Modal, Select, Textarea } from '../../ui'
+import { space } from '../../../lib/tokens'
 
 const accountTypes = ['Asset', 'Liability', 'Equity', 'Revenue', 'Expense']
 
-const fieldStyle = { display: 'flex', flexDirection: 'column', gap: '0.375rem', marginBottom: '1rem' }
-const labelStyle = { fontSize: '0.8rem', fontWeight: 500, color: 'var(--text)' }
-const selectStyle = {
-  padding: '0.5rem 0.75rem', border: '1px solid var(--border)',
-  borderRadius: '6px', fontSize: '0.875rem', outline: 'none',
-}
-const textareaStyle = {
-  padding: '0.5rem 0.75rem', border: '1px solid var(--border)',
-  borderRadius: '6px', fontSize: '0.875rem', outline: 'none',
-  minHeight: '80px', resize: 'vertical',
+const formStyle = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: space[4],
 }
 
 const emptyForm = { name: '', type: 'Asset', parent_id: '', description: '' }
@@ -63,42 +56,72 @@ export default function CreateAccountModal({ open, onClose, account, accounts, o
     <Modal
       open={open}
       onClose={onClose}
-      title={account ? 'Edit Account' : 'Create Account'}
+      title={account ? 'Edit account' : 'Create account'}
+      description={
+        account
+          ? 'Update the account details.'
+          : 'Add a new account to your chart of accounts.'
+      }
       footer={
         <>
-          <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={handleSubmit} disabled={saving}>
-            {saving ? 'Saving...' : account ? 'Update' : 'Create'}
+          <Button variant="secondary" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={handleSubmit} loading={saving}>
+            {account ? 'Update' : 'Create'}
           </Button>
         </>
       }
     >
-      <form onSubmit={handleSubmit}>
-        <div style={fieldStyle}>
-          <label style={labelStyle}>Account Name *</label>
-          <Input name="name" value={form.name} onChange={handleChange} error={formErrors.name} required />
-        </div>
-        <div style={fieldStyle}>
-          <label style={labelStyle}>Type *</label>
-          <select style={selectStyle} name="type" value={form.type} onChange={handleChange}>
-            {accountTypes.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-        <div style={fieldStyle}>
-          <label style={labelStyle}>Parent Account</label>
-          <select style={selectStyle} name="parent_id" value={form.parent_id} onChange={handleChange}>
-            <option value="">None (Root Account)</option>
-            {(accounts || []).map((a) => (
-              <option key={a.id} value={a.id}>{a.name}</option>
-            ))}
-          </select>
-        </div>
-        <div style={fieldStyle}>
-          <label style={labelStyle}>Description</label>
-          <textarea style={textareaStyle} name="description" value={form.description} onChange={handleChange} />
-        </div>
+      <form onSubmit={handleSubmit} style={formStyle}>
+        <FormField label="Account name" required>
+          {({ id, ...a11y }) => (
+            <input
+              id={id}
+              name="name"
+              className="cetrak-input"
+              value={form.name}
+              onChange={handleChange}
+              required
+              {...a11y}
+            />
+          )}
+        </FormField>
+
+        <Select
+          label="Type"
+          name="type"
+          value={form.type}
+          onChange={handleChange}
+          error={Array.isArray(formErrors.type) ? formErrors.type[0] : formErrors.type}
+          required
+        >
+          {accountTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+        </Select>
+
+        <Select
+          label="Parent account"
+          name="parent_id"
+          value={form.parent_id}
+          onChange={handleChange}
+          helperText="Leave empty for a root account."
+        >
+          <option value="">None (root account)</option>
+          {(accounts || []).map((a) => (
+            <option key={a.id} value={a.id}>{a.name}</option>
+          ))}
+        </Select>
+
+        <Textarea
+          label="Description"
+          name="description"
+          value={form.description}
+          onChange={handleChange}
+          rows={3}
+        />
+
         {formErrors.general && (
-          <div style={{ padding: '0.5rem', background: '#FFF3F3', borderRadius: '6px', marginBottom: '1rem', color: '#F44336', fontSize: '0.8rem' }}>{formErrors.general}</div>
+          <Alert tone="error">{formErrors.general}</Alert>
         )}
       </form>
     </Modal>
