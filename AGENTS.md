@@ -1,22 +1,23 @@
 <!-- SPECKIT START -->
-Current phase: TWO UNCOMMITTED STREAMS IN THE WORKING TREE, BOTH COMPLETE AND VERIFIED.
+Current phase: WORKING TREE CLEAN — all completed streams are committed. Visual QA complete.
 
-1. **`specs/014-auto-journal-entry-code`** — auto-assigned journal entry references. Backend mints
+1. **`specs/014-auto-journal-entry-code`** — auto-assigned journal entry references (**committed**). Backend mints
    `JE-YYYY-NNNN` per tenant per year at save (`JournalEntryService.next_reference()`, collision-skip,
-   max-suffix); serializer accepts blank/missing reference; new read-only preview endpoint
+   max-suffix); serializer accepts blank/missing reference; read-only preview endpoint
    `GET /accounting/journal-entries/next-reference/`; the create form shows a disabled preview and omits
    the reference from the payload. Entries stay immutable (405 on PUT/PATCH/DELETE). Report:
    `specs/014-auto-journal-entry-code/report.md` (all tasks checked in `tasks.md`).
-   Note: `specs/014-auto-journal-entry/` and `specs/014-auto-customer-code/` are **superseded** drafts —
-   the authoritative journal spec is `014-auto-journal-entry-code`.
-2. **Frontend design system v1** — `docs/specs/frontend-design-system-v1.md` (+ audit + implementation
-   doc). Tokenized, dark-mode-aware system: `styles/tokens.css` + `globals.css` + `lib/tokens.js`;
-   31 exports from `components/ui/`; `AppShell`/`Sidebar`/`TopBar` replacing `AppLayout` + the four
-   sub-navs; dead duplicate components deleted; 12 `window.confirm` → `ConfirmDialog`, 11 `alert()` →
+   Note: `specs/014-auto-journal-entry/` was a **superseded** draft (original `JE-0001` format) and has been
+   removed at closeout; the authoritative journal spec is `014-auto-journal-entry-code`.
+2. **Frontend design system v1** (**committed**) — `docs/specs/frontend-design-system-v1.md` (+ audit +
+   implementation + visual-qa doc). Tokenized, dark-mode-aware system: `styles/tokens.css` + `globals.css`
+   + `lib/tokens.js`; 31 exports from `components/ui/`; `AppShell`/`Sidebar`/`TopBar` replacing `AppLayout` +
+   the four sub-navs; dead duplicate components deleted; 12 `window.confirm` → `ConfirmDialog`, 11 `alert()` →
    Toast. **Zero backend / API / payload / auth-behavior change** (`services/api.js` untouched).
 
-Committed since 012-H2: 013 auto-customer-code, 015 auto-vendor-code, 016 auto-invoice-number.
-Features 001–012 (incl. H2 identity/session hardening) remain implemented.
+Committed since 012-H2: 013 auto-customer-code, 014-auto-journal-entry-code, 015 auto-vendor-code,
+016 auto-invoice-number, and the Frontend Design System v1. Features 001–012 (incl. H2 identity/session
+hardening) remain implemented. Working tree is clean after the closeout cleanup.
 
 ## Verification (run this session)
 
@@ -40,8 +41,8 @@ Features 001–012 (incl. H2 identity/session hardening) remain implemented.
 
 - P2 audit items AUD-010, 011, 012, 015, 025, 026 and P3 items AUD-019, 023, 027, 029 — natural next:
   AUD-025 (bcrypt), AUD-026 (Celery). See `docs/audits/production-hardening-h2-report-001.md`.
-- Manual visual QA of the design system across both themes at each breakpoint (the one remaining
-  human gate; build/lint are automated).
+- Manual visual QA of the design system was completed (`frontend-design-system-v1-visual-qa.md`); an optional
+  in-browser human spot-check across both themes remains the only non-automated confirmation.
 - Cleanup of the 11 pre-existing `set-state-in-effect` fetch effects.
 
 ## Quick Reference
