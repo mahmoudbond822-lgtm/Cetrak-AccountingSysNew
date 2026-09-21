@@ -1,7 +1,6 @@
 import datetime as dt_mod
 import secrets
 
-from django.contrib.auth.hashers import check_password
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -72,7 +71,7 @@ class AuthService:
         if user.status == User.Status.DISABLED:
             return None, "Account has been disabled. Contact your administrator."
 
-        if not check_password(password, user.password):
+        if not user.check_password(password):
             return None, "Invalid email or password."
 
         memberships = list(
