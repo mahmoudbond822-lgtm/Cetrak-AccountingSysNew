@@ -19,9 +19,6 @@ CORS_ALLOW_HEADERS = list(__import__("corsheaders.defaults", fromlist=["default_
     "x-tenant-id",
 ]
 
-CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://redis:6379/0")
-CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", "redis://redis:6379/0")
-
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",

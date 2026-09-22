@@ -14,15 +14,27 @@ Current phase: WORKING TREE CLEAN — all completed streams are committed. Visua
    + `lib/tokens.js`; 31 exports from `components/ui/`; `AppShell`/`Sidebar`/`TopBar` replacing `AppLayout` +
    the four sub-navs; dead duplicate components deleted; 12 `window.confirm` → `ConfirmDialog`, 11 `alert()` →
    Toast. **Zero backend / API / payload / auth-behavior change** (`services/api.js` untouched).
+3. **`specs/025-bcrypt`** — bcrypt password hashing (**committed**). `PASSWORD_HASHERS` bcrypt-first in
+   `base.py`; MD5 test override removed; `AuthService.login` uses `user.check_password` (lazy PBKDF2→bcrypt
+   upgrade). Report: `specs/025-bcrypt/report.md`.
+4. **`specs/026-celery`** — Celery background-task foundation (**committed**, closes AUD-026). All Celery
+   config moved to `base.py` (env-driven `CELERY_BROKER_URL`/`CELERY_RESULT_BACKEND` with local-only defaults,
+   JSON-only serialization/accept content, UTC timezone, broker retry on startup); dev/local/prod inherit it;
+   eager mode confined to `test.py` (with a base-settings guard test); `apps/core/tasks.py` registers the
+   `core.ping` infrastructure proof task (§VII now has a real execution path); dead `accounts/tasks.py`
+   re-export removed; `backend/.env.example` documents the broker convention (`.env` stays gitignored).
+   Opt-in real-broker integration test gated on `CETRAK_CELERY_INTEGRATION=1`. No accounting/auth/API/
+   frontend/deployment change; `config/celery.py` untouched. Report: `specs/026-celery/report.md`.
 
 Committed since 012-H2: 013 auto-customer-code, 014-auto-journal-entry-code, 015 auto-vendor-code,
-016 auto-invoice-number, and the Frontend Design System v1. Features 001–012 (incl. H2 identity/session
-hardening) remain implemented. Working tree is clean after the closeout cleanup.
+016 auto-invoice-number, the Frontend Design System v1, AUD-025 bcrypt, and AUD-026 Celery infrastructure.
+Features 001–012 (incl. H2 identity/session hardening) remain implemented. Working tree is clean.
 
 ## Verification (run this session)
 
 - Backend: `cd backend; $env:DJANGO_SETTINGS_MODULE="config.settings.test"; py -m pytest apps/ -q` →
-  **421 passed, 1 skipped** (324 H2 baseline + auto-code features + 18 journal-reference tests)
+  **455 passed, 2 skipped** (436 baseline + 19 new Celery tests; skips = 1 pre-existing + 1 opt-in
+  Redis integration round-trip)
 - Frontend: `npm run build` clean — 156 modules, 437.27 kB JS / 122.32 kB gzip, 11.67 kB CSS
 - Frontend: `npm run lint` → **13 problems** (12 errors, 1 warning), all pre-existing categories
   (11× `react-hooks/set-state-in-effect`, 1× `exhaustive-deps`, 1× `no-undef` `process` in
@@ -39,8 +51,9 @@ hardening) remain implemented. Working tree is clean after the closeout cleanup.
 
 ## Next candidates (documented, not started)
 
-- P2 audit items AUD-010, 011, 012, 015, 025, 026 and P3 items AUD-019, 023, 027, 029 — natural next:
-  AUD-025 (bcrypt), AUD-026 (Celery). See `docs/audits/production-hardening-h2-report-001.md`.
+- P2 audit items AUD-010, 011, 012, 015 and P3 items AUD-019, 023, 027, 029 — natural next: AUD-015
+  (email delivery, which now has the Celery substrate AUD-026 built). See
+  `docs/audits/production-hardening-h2-report-001.md`.
 - Manual visual QA of the design system was completed (`frontend-design-system-v1-visual-qa.md`); an optional
   in-browser human spot-check across both themes remains the only non-automated confirmation.
 - Cleanup of the 11 pre-existing `set-state-in-effect` fetch effects.
