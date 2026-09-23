@@ -97,6 +97,13 @@ class RefreshCookieTests(APITestCase):
         os.environ["DATABASE_URL"] = "sqlite:///:memory:"
         os.environ.setdefault("CORS_ALLOWED_ORIGINS", "https://example.com")
         os.environ.setdefault("CSRF_TRUSTED_ORIGINS", "https://example.com")
+        # AUD-015: production settings now require a full SMTP email config.
+        os.environ["EMAIL_BACKEND"] = "django.core.mail.backends.smtp.EmailBackend"
+        os.environ["EMAIL_HOST"] = "smtp.example.com"
+        os.environ["EMAIL_HOST_USER"] = "apikey"
+        os.environ["EMAIL_HOST_PASSWORD"] = "supersecretvalue"
+        os.environ["DEFAULT_FROM_EMAIL"] = "Cetrak <noreply@example.com>"
+        os.environ["FRONTEND_URL"] = "https://app.example.com"
 
         sys.modules.pop("config.settings.base", None)
         sys.modules.pop("config.settings.prod", None)

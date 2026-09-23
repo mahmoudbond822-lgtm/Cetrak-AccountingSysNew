@@ -1,0 +1,15 @@
+You're invited to join {{ tenant_name }} on Cetrak
+
+An administrator invited you to join {{ tenant_name }} on Cetrak as {{ role }}.
+
+Accept the invitation by opening this link:
+
+{{ action_url }}
+
+This invitation expires on {{ expires_at|date:"F j, Y, g:i A" }} and can only
+be used with the email address it was sent to.
+
+If you were not expecting this invitation, you can safely ignore this email.
+
+---
+© Cetrak. You are receiving this email because this address was invited to a team.

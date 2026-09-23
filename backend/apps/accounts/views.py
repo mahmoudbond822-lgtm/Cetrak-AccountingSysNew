@@ -1,6 +1,7 @@
 import datetime as dt_mod
 
 from django.conf import settings
+from django.db import transaction
 from django.middleware.csrf import get_token
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -30,6 +31,7 @@ from apps.accounts.cookies import (
 from apps.accounts.services import _email_key
 from apps.core.models import Tenant
 from apps.core.audit import AuditService
+from apps.core.mail import enqueue_invitation_email
 
 
 def _mint_refresh(user_id, tenant_id=None, remember_me=False):
@@ -297,6 +299,8 @@ def invitation_list_create_view(request):
         return Response(
             {"email": [str(e)]}, status=status.HTTP_400_BAD_REQUEST
         )
+
+    transaction.on_commit(lambda: enqueue_invitation_email(invitation.id))
 
     result = InvitationSerializer(invitation)
     return Response(result.data, status=status.HTTP_201_CREATED)

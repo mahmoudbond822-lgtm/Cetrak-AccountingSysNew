@@ -18,6 +18,28 @@ if SECRET_KEY == "django-insecure-change-me-in-production":
         "DJANGO_SECRET_KEY environment variable must be set in production."
     )
 
+# Email delivery (AUD-015): production must never silently fall back to a
+# development backend (console/locmem) or send from an unconfigured SMTP relay.
+# Fail fast on missing or ambiguous configuration instead.
+if EMAIL_BACKEND != "django.core.mail.backends.smtp.EmailBackend":
+    raise ImproperlyConfigured(
+        "EMAIL_BACKEND must be 'django.core.mail.backends.smtp.EmailBackend' "
+        "in production; development backends are not permitted."
+    )
+
+for _name in ("EMAIL_HOST", "EMAIL_HOST_USER", "EMAIL_HOST_PASSWORD",
+              "DEFAULT_FROM_EMAIL", "FRONTEND_URL"):
+    if not os.environ.get(_name):
+        raise ImproperlyConfigured(
+            f"{_name} environment variable must be set in production."
+        )
+
+if EMAIL_USE_TLS and EMAIL_USE_SSL:
+    raise ImproperlyConfigured(
+        "EMAIL_USE_TLS and EMAIL_USE_SSL are mutually exclusive; set only one "
+        "in production."
+    )
+
 ALLOWED_HOSTS = _csv_env("DJANGO_ALLOWED_HOSTS")
 
 DATABASES = {
