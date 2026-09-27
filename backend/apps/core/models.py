@@ -1,4 +1,6 @@
 import uuid
+
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -26,6 +28,65 @@ class TenantScopedModel(BaseModel):
 
     class Meta:
         abstract = True
+
+
+class TenantOwnedLineModel(BaseModel):
+    """Line-level row that carries explicit tenant ownership (AUD-011).
+
+    Constitution §I requires every tenant-owned table to expose ``tenant_id``.
+    The line tables historically inherited ``BaseModel`` alone, so ownership
+    was implied by the parent row only. The column now exists, but the parent
+    stays the single source of truth: ``tenant`` is derived from the parent on
+    save, and a divergent value is rejected rather than stored, so the two can
+    never disagree.
+    """
+
+    objects = TenantScopedQuerySet.as_manager()
+
+    tenant = models.ForeignKey(
+        "core.Tenant",
+        on_delete=models.CASCADE,
+        related_name="+",
+    )
+
+    #: Name of the ForeignKey field that owns this line. Set by each concrete
+    #: model, e.g. ``parent_field = "entry"`` for journal entry lines.
+    parent_field = None
+
+    class Meta:
+        abstract = True
+
+    @property
+    def parent(self):
+        return getattr(self, self.parent_field)
+
+    def _parent_tenant_id(self):
+        return getattr(self.parent, "tenant_id", None)
+
+    def save(self, *args, **kwargs):
+        parent_tenant_id = self._parent_tenant_id()
+        if parent_tenant_id is not None:
+            if self.tenant_id is None:
+                self.tenant_id = parent_tenant_id
+            elif self.tenant_id != parent_tenant_id:
+                raise ValidationError(
+                    f"{self._meta.verbose_name} tenant does not match its "
+                    f"{self.parent_field} tenant."
+                )
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        super().clean()
+        parent_tenant_id = self._parent_tenant_id()
+        if (
+            parent_tenant_id is not None
+            and self.tenant_id is not None
+            and self.tenant_id != parent_tenant_id
+        ):
+            raise ValidationError(
+                f"{self._meta.verbose_name} tenant does not match its "
+                f"{self.parent_field} tenant."
+            )
 
 
 class Tenant(BaseModel):

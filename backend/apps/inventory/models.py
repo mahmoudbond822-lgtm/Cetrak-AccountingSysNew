@@ -1,6 +1,6 @@
 from django.db import models
 
-from apps.core.models import TenantScopedModel, BaseModel
+from apps.core.models import TenantOwnedLineModel, TenantScopedModel
 
 
 class Product(TenantScopedModel):
@@ -230,7 +230,9 @@ class StockAdjustment(TenantScopedModel):
         return f"{self.number} ({self.status})"
 
 
-class StockAdjustmentLine(BaseModel):
+class StockAdjustmentLine(TenantOwnedLineModel):
+    parent_field = "adjustment"
+
     adjustment = models.ForeignKey(
         StockAdjustment,
         on_delete=models.CASCADE,
@@ -247,6 +249,12 @@ class StockAdjustmentLine(BaseModel):
         db_table = "inventory_stockadjustmentline"
         verbose_name = "Stock Adjustment Line"
         verbose_name_plural = "Stock Adjustment Lines"
+        indexes = [
+            models.Index(
+                fields=["tenant", "adjustment"],
+                name="inv_line_tenant_adj_idx",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.product_id}: {self.quantity}"

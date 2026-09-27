@@ -1,6 +1,6 @@
 from django.db import models
 
-from apps.core.models import TenantScopedModel, BaseModel
+from apps.core.models import TenantOwnedLineModel, TenantScopedModel
 
 
 class Customer(TenantScopedModel):
@@ -83,7 +83,9 @@ class SalesInvoice(TenantScopedModel):
         return f"{self.number} ({self.status})"
 
 
-class SalesInvoiceLine(BaseModel):
+class SalesInvoiceLine(TenantOwnedLineModel):
+    parent_field = "invoice"
+
     invoice = models.ForeignKey(
         SalesInvoice,
         on_delete=models.CASCADE,
@@ -108,6 +110,12 @@ class SalesInvoiceLine(BaseModel):
         db_table = "sales_invoiceline"
         verbose_name = "Sales Invoice Line"
         verbose_name_plural = "Sales Invoice Lines"
+        indexes = [
+            models.Index(
+                fields=["tenant", "invoice"],
+                name="sales_line_tenant_invoice_idx",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.description} x {self.quantity}"

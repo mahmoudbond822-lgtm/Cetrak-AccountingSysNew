@@ -28,6 +28,19 @@ function createEmptyLine() {
   return { id: Date.now(), account_id: '', debit: '', credit: '' }
 }
 
+// Money is compared in integer minor units at the backend's precision
+// (NUMERIC(19,4)) instead of binary floats, so the balance gate is exact
+// rather than tolerance-based (AUD-030 / N1).
+const MONEY_UNITS = 10000
+
+function toMoneyUnits(value) {
+  return Math.round((parseFloat(value) || 0) * MONEY_UNITS)
+}
+
+function fromMoneyUnits(units) {
+  return units / MONEY_UNITS
+}
+
 export default function JournalEntryForm({ onSaved, onCancel }) {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0])
   const [description, setDescription] = useState('')
@@ -46,11 +59,11 @@ export default function JournalEntryForm({ onSaved, onCancel }) {
   }, [])
 
   const totals = lines.reduce((acc, line) => ({
-    debit: acc.debit + (parseFloat(line.debit) || 0),
-    credit: acc.credit + (parseFloat(line.credit) || 0),
+    debit: acc.debit + toMoneyUnits(line.debit),
+    credit: acc.credit + toMoneyUnits(line.credit),
   }), { debit: 0, credit: 0 })
 
-  const balanced = Math.abs(totals.debit - totals.credit) < 0.001
+  const balanced = totals.debit === totals.credit
   const hasEmptyAccounts = lines.some((l) => !l.account_id)
   const hasEnoughLines = lines.length >= 2
   const canSubmit = balanced && !hasEmptyAccounts && hasEnoughLines && !saving
@@ -77,8 +90,8 @@ export default function JournalEntryForm({ onSaved, onCancel }) {
       description,
       lines: lines.map((l) => ({
         account_id: l.account_id,
-        debit: parseFloat(l.debit) || 0,
-        credit: parseFloat(l.credit) || 0,
+        debit: fromMoneyUnits(toMoneyUnits(l.debit)),
+        credit: fromMoneyUnits(toMoneyUnits(l.credit)),
       })),
     }
     try {
@@ -159,8 +172,8 @@ export default function JournalEntryForm({ onSaved, onCancel }) {
         background: totals.debit > 0 || totals.credit > 0 ? (balanced ? 'var(--success-soft)' : 'var(--danger-soft)') : 'var(--bg-hover)',
         border: `1px solid ${totals.debit > 0 || totals.credit > 0 ? (balanced ? 'var(--success)' : 'var(--danger)') : 'var(--border)'}`,
       }}>
-        <span>Total Debit: <strong>{totals.debit.toFixed(4)}</strong></span>
-        <span>Total Credit: <strong>{totals.credit.toFixed(4)}</strong></span>
+        <span>Total Debit: <strong>{fromMoneyUnits(totals.debit).toFixed(4)}</strong></span>
+        <span>Total Credit: <strong>{fromMoneyUnits(totals.credit).toFixed(4)}</strong></span>
         <span style={{ color: totals.debit > 0 || totals.credit > 0 ? (balanced ? 'var(--success)' : 'var(--danger)') : 'var(--text-muted)' }}>
           {totals.debit === 0 && totals.credit === 0 ? 'Enter amounts' : balanced ? '✓ Balanced' : '✗ Imbalanced'}
         </span>

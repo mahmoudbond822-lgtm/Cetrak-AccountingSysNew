@@ -1,7 +1,9 @@
+from decimal import Decimal
+
 from django.db import models
 from django.core.exceptions import ValidationError
 
-from apps.core.models import TenantScopedModel, BaseModel
+from apps.core.models import TenantOwnedLineModel, TenantScopedModel
 
 
 class Account(TenantScopedModel):
@@ -56,15 +58,24 @@ class JournalEntry(TenantScopedModel):
 
     @property
     def total_debit(self):
-        return self.lines.aggregate(total=models.Sum("debit"))["total"] or 0
+        return self.lines.aggregate(total=models.Sum("debit"))["total"] or Decimal(
+            "0"
+        )
 
     @property
     def total_credit(self):
-        return self.lines.aggregate(total=models.Sum("credit"))["total"] or 0
+        return self.lines.aggregate(total=models.Sum("credit"))["total"] or Decimal(
+            "0"
+        )
 
     @property
     def is_balanced(self):
-        return abs(self.total_debit - self.total_credit) < 0.01
+        """Exact Decimal equality (AUD-030).
+
+        A tolerance would let a real imbalance pass as balanced, so the sums
+        must match exactly at the field precision (NUMERIC(19,4)).
+        """
+        return self.total_debit == self.total_credit
 
     def post_entry(self):
         from django.utils import timezone
@@ -81,7 +92,9 @@ class JournalEntry(TenantScopedModel):
             )
 
 
-class JournalEntryLine(BaseModel):
+class JournalEntryLine(TenantOwnedLineModel):
+    parent_field = "entry"
+
     entry = models.ForeignKey(
         JournalEntry, on_delete=models.CASCADE, related_name="lines"
     )
@@ -96,12 +109,19 @@ class JournalEntryLine(BaseModel):
         db_table = "accounting_journalentryline"
         verbose_name = "Journal Entry Line"
         verbose_name_plural = "Journal Entry Lines"
+        indexes = [
+            models.Index(
+                fields=["tenant", "entry"],
+                name="acct_line_tenant_entry_idx",
+            ),
+        ]
 
     def __str__(self):
         direction = f"Dr {self.debit}" if self.debit else f"Cr {self.credit}"
         return f"{self.account.name}: {direction}"
 
     def clean(self):
+        super().clean()
         if self.debit and self.credit:
             raise ValidationError(
                 "A line cannot have both debit and credit amounts."
