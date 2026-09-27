@@ -328,6 +328,10 @@ def invitation_list_create_view(request):
             {"email": [str(e)]}, status=status.HTTP_400_BAD_REQUEST
         )
 
+    # Best-effort dispatch, deliberately after the commit: the invitation must
+    # never be rolled back by an email failure, and a broker that cannot be
+    # reached is logged by enqueue_invitation_email rather than raised, so the
+    # response is the same 201 either way.
     transaction.on_commit(lambda: enqueue_invitation_email(invitation.id))
 
     result = InvitationSerializer(invitation)

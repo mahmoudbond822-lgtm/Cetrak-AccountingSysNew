@@ -78,9 +78,17 @@ REFRESH_COOKIE_SECURE = True
 # --- Authentication throttling (AUD-014) ------------------------------------
 # Throttle state must be shared: gunicorn runs several workers per instance and
 # the service is expected to scale out, so per-process counters would multiply
-# every limit by the number of workers/instances. The same Redis that backs
-# Celery serves the cache (database 1); REDIS_URL is the existing convention
-# documented in backend/.env.example.
+# every limit by the number of workers/instances. REDIS_URL is the existing
+# convention documented in backend/.env.example; locally it points at database 1
+# while Celery uses database 0, and on Render all of REDIS_URL /
+# CELERY_BROKER_URL / CELERY_RESULT_BACKEND are the same Key Value instance.
+#
+# CACHE_MUST_BE_SHARED is what makes the below a hard requirement rather than a
+# preference: apps.core.health refuses to report the cache as healthy while the
+# effective backend is process-local, so a deployment that lost REDIS_URL is
+# visible on the endpoint Render already polls instead of looking fine.
+CACHE_MUST_BE_SHARED = True
+
 _cache_url = os.environ.get("REDIS_URL", "").strip()
 if _cache_url:
     CACHES = {

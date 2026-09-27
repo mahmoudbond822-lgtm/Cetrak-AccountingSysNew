@@ -4,17 +4,17 @@ from django.http import JsonResponse
 from django.db import connection
 
 def health_check(request):
-    from apps.core.health import check_redis
+    from apps.core.health import check_cache
     db_ok = True
     try:
         connection.ensure_connection()
     except Exception:
         db_ok = False
-    redis_ok = check_redis()
+    cache_ok, cache_state = check_cache()
     return JsonResponse({
-        "status": "ok" if db_ok else "degraded",
+        "status": "ok" if db_ok and cache_ok else "degraded",
         "database": "ok" if db_ok else "unreachable",
-        "cache": "ok" if redis_ok else "unreachable",
+        "cache": cache_state,
     })
 
 urlpatterns = [

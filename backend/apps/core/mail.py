@@ -13,15 +13,31 @@ Security contract (invariant):
     values are auto-escaped by Django's template engine.
   * The task re-reads invitation state at execution time and refuses to email
     invitations that have been accepted, expired, or cancelled after enqueue.
+
+Delivery semantics: the invitation row is committed before the enqueue runs, so
+a broker that cannot be reached is reported, not raised. The caller gets a
+``None`` handle and an ERROR log line, and the invitation stays exactly as it
+was. Re-sending is an operator decision (there is no resend endpoint).
 """
 
 import logging
 
+from celery.exceptions import CeleryError
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
+from kombu.exceptions import KombuError
+from redis.exceptions import RedisError
 
 logger = logging.getLogger("apps.core.mail")
+
+# Publishing to the broker can fail for reasons no caller can act on. Observed
+# on the real publish path: kombu.exceptions.OperationalError when the broker
+# refuses the connection, a plain RuntimeError ("retry limit exceeded ... result
+# store backend") when the result backend is unreachable, and redis exceptions
+# when the client itself fails. kombu and redis ship with celery/redis in
+# requirements/base.txt, so importing them here adds no dependency.
+BROKER_TRANSPORT_ERRORS = (CeleryError, KombuError, RedisError, OSError, RuntimeError)
 
 
 def redact_email(email):
@@ -74,11 +90,31 @@ def enqueue_invitation_email(invitation_id):
     """Dispatch invitation email delivery to the Celery worker (async).
 
     Must be called after the invitation row is committed (the view wires this
-    through ``transaction.on_commit``). Returns the ``AsyncResult`` handle.
+    through ``transaction.on_commit``). Returns the ``AsyncResult`` handle, or
+    ``None`` when the message could not be published.
+
+    A publication failure is logged and swallowed rather than raised: the caller
+    runs after the commit, so raising would turn a delivered invitation into an
+    unexplained HTTP 500 while the row sits there undispatched. Only the
+    exception *type* is logged — kombu/redis messages can embed the broker URL
+    and its credentials.
     """
     from apps.core.tasks import send_invitation_email
 
-    result = send_invitation_email.delay(str(invitation_id))
+    try:
+        result = send_invitation_email.delay(str(invitation_id))
+    except BROKER_TRANSPORT_ERRORS as exc:
+        logger.error(
+            "email task enqueue failed: invitation is committed but not "
+            "dispatched, so the invitee will not be emailed until it is re-sent",
+            extra={
+                "kind": "invitation",
+                "invitation_id": str(invitation_id),
+                "error_type": type(exc).__name__,
+                "broker": "unreachable",
+            },
+        )
+        return None
     logger.info(
         "email task enqueued",
         extra={

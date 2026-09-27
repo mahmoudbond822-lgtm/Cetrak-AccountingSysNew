@@ -1,3 +1,11 @@
+# Secrets shared by every service that boots config.settings.prod, so the web
+# service and the Celery worker can never disagree about DJANGO_SECRET_KEY.
+envVarGroups:
+  - name: cetrak-runtime
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+
 services:
   - type: web
     name: cetrak-api
@@ -9,13 +17,30 @@ services:
     envVars:
       - key: DJANGO_SETTINGS_MODULE
         value: config.settings.prod
-      - key: DJANGO_SECRET_KEY
-        generateValue: true
       - key: DJANGO_ALLOWED_HOSTS
         value: .onrender.com
       - key: DATABASE_URL
         fromDatabase:
           name: cetrak-db
+          property: connectionString
+      # Redis backs both the AUD-014 authentication throttle state (shared by all
+      # three gunicorn workers) and the Celery broker/result backend. Render's
+      # Key Value connectionString is an internal-network redis:// URL that
+      # carries the instance credentials, so the same value serves all three.
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: cetrak-redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: keyvalue
+          name: cetrak-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: keyvalue
+          name: cetrak-redis
           property: connectionString
       - key: CORS_ALLOWED_ORIGINS
         sync: false
@@ -41,6 +66,65 @@ services:
         sync: false
       - key: SYSTEM_DEFAULT_AI_KEY
         sync: false
+      - fromGroup: cetrak-runtime
+
+  # Background worker for core.send_invitation_email. It runs the same
+  # config.celery application as the web service (celery -A config), so there is
+  # no second entry point: config/celery.py and the task registry are shared.
+  - type: worker
+    name: cetrak-worker
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements/prod.txt
+    startCommand: celery -A config worker -l info
+    # A worker is SIGTERM'd on every deploy; SMTP retries can outlive the 30s
+    # default, and a hard kill mid-send loses the message with no task result.
+    maxShutdownDelaySeconds: 120
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.prod
+      - key: DJANGO_ALLOWED_HOSTS
+        value: .onrender.com
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cetrak-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: cetrak-redis
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: keyvalue
+          name: cetrak-redis
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: keyvalue
+          name: cetrak-redis
+          property: connectionString
+      # config.settings.prod refuses to boot without the SMTP configuration, and
+      # FRONTEND_URL is what the invitation template turns into an action link.
+      - key: FRONTEND_URL
+        sync: false
+      - key: EMAIL_BACKEND
+        sync: false
+      - key: EMAIL_HOST
+        sync: false
+      - key: EMAIL_PORT
+        sync: false
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+      - key: EMAIL_USE_TLS
+        sync: false
+      - key: EMAIL_USE_SSL
+        sync: false
+      - key: DEFAULT_FROM_EMAIL
+        sync: false
+      - fromGroup: cetrak-runtime
 
   - type: web
     name: cetrak-frontend
@@ -55,6 +139,16 @@ services:
     envVars:
       - key: VITE_API_BASE_URL
         sync: false
+
+  # Render Key Value (Redis) instance: shared cache + Celery broker + result
+  # backend for cetrak-api and cetrak-worker. Internal-network connections only
+  # (ipAllowList: []) — nothing outside Render needs to reach it.
+  - type: keyvalue
+    name: cetrak-redis
+    ipAllowList: []
+    # A broker must not silently drop queued messages when memory runs out, so
+    # this instance refuses writes over its limit instead of evicting tasks.
+    maxmemoryPolicy: noeviction
 
 databases:
   - name: cetrak-db

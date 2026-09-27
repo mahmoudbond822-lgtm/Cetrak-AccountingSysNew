@@ -198,6 +198,13 @@ DEFAULT_FROM_EMAIL = os.environ.get(
 # Base URL of the web frontend, used to build action links inside email bodies.
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 
+# Whether the default cache must be shared by every process of the deployment.
+# Off everywhere except production: single-process development and the test
+# suite have no shared cache to talk to, and turning it on would make their
+# health probes fail for a reason that does not apply to them. Production sets
+# it because its throttle state is worthless per process (see prod.py).
+CACHE_MUST_BE_SHARED = False
+
 CONTENT_SECURITY_POLICY = (
     "default-src 'self'; "
     "script-src 'self'; "

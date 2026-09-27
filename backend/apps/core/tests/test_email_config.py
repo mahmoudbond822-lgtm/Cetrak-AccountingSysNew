@@ -47,6 +47,12 @@ def _load_prod(monkeypatch, env_values):
                         env_values.get("EMAIL_USE_SSL", "false").lower() == "true")
     for name in _PROD_REQUIRED:
         monkeypatch.setattr(base, name, env_values.get(name, ""))
+    # prod.py star-imports these from base, so what prod sees is the value base
+    # held at import time — setting the environment alone changes nothing once
+    # base is loaded.
+    for name in ("CELERY_BROKER_URL", "CELERY_RESULT_BACKEND"):
+        if name in env_values:
+            monkeypatch.setattr(base, name, env_values[name])
     for key, value in env_values.items():
         monkeypatch.setenv(key, value)
     for key in list(os.environ):
