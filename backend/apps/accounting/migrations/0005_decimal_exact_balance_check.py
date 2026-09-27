@@ -33,10 +33,24 @@ COUNT_UNBALANCED = """
 """
 
 
+def count_unbalanced_entries(schema_editor):
+    """Number of journal entries that the Decimal-exact constraint would reject.
+
+    The count is read from an explicit cursor on purpose:
+    ``schema_editor.execute()`` returns ``None`` (it executes inside its own
+    ``with connection.cursor()`` and never returns the cursor), so calling
+    ``.fetchone()`` on its result raises ``AttributeError`` and the migration
+    dies on every PostgreSQL database.
+    """
+    with schema_editor.connection.cursor() as cursor:
+        cursor.execute(COUNT_UNBALANCED)
+        return cursor.fetchone()[0]
+
+
 def apply_exact_check(apps, schema_editor):
     if schema_editor.connection.vendor != "postgresql":
         return
-    unbalanced = schema_editor.execute(COUNT_UNBALANCED).fetchone()[0]
+    unbalanced = count_unbalanced_entries(schema_editor)
     if unbalanced:
         raise RuntimeError(
             f"{unbalanced} journal entr(ies) are not exactly balanced and would "
