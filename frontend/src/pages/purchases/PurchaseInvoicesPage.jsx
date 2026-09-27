@@ -4,9 +4,10 @@ import { getAuth } from '../../services/api'
 import { purchasesService } from '../../services/purchasesService'
 import { useToast } from '../../components/ui'
 import {
-  Alert, Badge, Button, ConfirmDialog, PageContainer, PageHeader, Select, Table,
+  Alert, Badge, Button, ConfirmDialog, PageContainer, PageHeader, Pagination, Select, Table,
 } from '../../components/ui'
 import { space } from '../../lib/tokens'
+import { PAGE_SIZE } from '../../lib/pagination'
 
 const money = (v) => Number(v || 0).toFixed(2)
 
@@ -34,6 +35,8 @@ export default function PurchaseInvoicesPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [notice, setNotice] = useState('')
@@ -42,15 +45,27 @@ export default function PurchaseInvoicesPage() {
   const previewRef = useRef('')
 
   const fetchInvoices = useCallback(() => {
-    purchasesService.getInvoices(statusFilter ? { status: statusFilter } : {})
-      .then(({ data }) => setInvoices(data))
+    const params = { page }
+    if (statusFilter) params.status = statusFilter
+    purchasesService.getInvoices(params)
+      .then(({ data }) => {
+        if ((data.results || []).length === 0 && page > 1) {
+          return purchasesService.getInvoices({ ...params, page: 1 }).then((first) => {
+            setInvoices(first.data.results || [])
+            setTotal(first.data.count ?? 0)
+            setPage(1)
+          })
+        }
+        setInvoices(data.results || [])
+        setTotal(data.count ?? 0)
+      })
       .catch(() => setError('Failed to load invoices. Please try again.'))
       .finally(() => setLoading(false))
-  }, [statusFilter])
+  }, [statusFilter, page])
 
   const fetchVendors = useCallback(() => {
-    purchasesService.getVendors()
-      .then(({ data }) => setVendors(data))
+    purchasesService.getVendors({ page_size: 100 })
+      .then(({ data }) => setVendors(data.results || []))
       .catch(() => { /* vendor list is optional for the invoice form */ })
   }, [])
 
@@ -176,7 +191,7 @@ export default function PurchaseInvoicesPage() {
           <Select
             label="Status"
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
           >
             <option value="">All</option>
             <option value="Draft">Draft</option>
@@ -204,6 +219,14 @@ export default function PurchaseInvoicesPage() {
         emptyTitle="No purchase invoices found"
         emptyDescription="Record a supplier invoice to get started."
         emptyAction={canManage ? <Button variant="primary" onClick={handleOpenCreate}>New Purchase Invoice</Button> : undefined}
+      />
+
+      <Pagination
+        page={page}
+        pageSize={PAGE_SIZE}
+        total={total}
+        onPageChange={setPage}
+        style={{ marginTop: space[3], justifyContent: 'flex-start' }}
       />
 
       <PurchaseInvoiceForm

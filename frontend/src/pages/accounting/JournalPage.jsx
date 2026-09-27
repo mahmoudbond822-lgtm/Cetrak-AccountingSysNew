@@ -3,9 +3,10 @@ import JournalEntryForm from '../../components/accounting/journal/JournalEntryFo
 import { accountingService } from '../../services/accountingService'
 import { useToast } from '../../components/ui'
 import {
-  Alert, Badge, Button, ConfirmDialog, EmptyState, Input, PageContainer, PageHeader, Skeleton,
+  Alert, Badge, Button, ConfirmDialog, EmptyState, Input, PageContainer, PageHeader, Pagination, Skeleton,
 } from '../../components/ui'
 import { color, font, space } from '../../lib/tokens'
+import { PAGE_SIZE } from '../../lib/pagination'
 
 const filterStyle = {
   display: 'flex',
@@ -63,6 +64,8 @@ export default function JournalPage() {
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [showForm, setShowForm] = useState(false)
@@ -73,17 +76,25 @@ export default function JournalPage() {
     setLoading(true)
     setError('')
     try {
-      const params = {}
+      const params = { page }
       if (dateFrom) params.date_from = dateFrom
       if (dateTo) params.date_to = dateTo
       const { data } = await accountingService.getJournalEntries(params)
-      setEntries(data)
+      if ((data.results || []).length === 0 && page > 1) {
+        const first = await accountingService.getJournalEntries({ ...params, page: 1 })
+        setEntries(first.data.results || [])
+        setTotal(first.data.count ?? 0)
+        setPage(1)
+      } else {
+        setEntries(data.results || [])
+        setTotal(data.count ?? 0)
+      }
     } catch {
       setError('Failed to load journal entries.')
     } finally {
       setLoading(false)
     }
-  }, [dateFrom, dateTo])
+  }, [dateFrom, dateTo, page])
 
   useEffect(() => { fetchEntries() }, [fetchEntries])
 
@@ -142,18 +153,18 @@ export default function JournalPage() {
           label="From"
           type="date"
           value={dateFrom}
-          onChange={(e) => setDateFrom(e.target.value)}
+          onChange={(e) => { setDateFrom(e.target.value); setPage(1) }}
           style={{ width: '170px' }}
         />
         <Input
           label="To"
           type="date"
           value={dateTo}
-          onChange={(e) => setDateTo(e.target.value)}
+          onChange={(e) => { setDateTo(e.target.value); setPage(1) }}
           style={{ width: '170px' }}
         />
         {(dateFrom || dateTo) && (
-          <Button variant="ghost" onClick={() => { setDateFrom(''); setDateTo('') }}>
+          <Button variant="ghost" onClick={() => { setDateFrom(''); setDateTo(''); setPage(1) }}>
             Clear
           </Button>
         )}
@@ -171,7 +182,7 @@ export default function JournalPage() {
             <Skeleton key={i} height="56px" />
           ))}
         </div>
-      ) : entries.length === 0 ? (
+      ) : total === 0 ? (
         <EmptyState
           title="No journal entries yet"
           description="Create your first double-entry transaction to get started."
@@ -208,6 +219,16 @@ export default function JournalPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {total > 0 && (
+        <Pagination
+          page={page}
+          pageSize={PAGE_SIZE}
+          total={total}
+          onPageChange={setPage}
+          style={{ marginTop: space[3], justifyContent: 'flex-start' }}
+        />
       )}
 
       <ConfirmDialog

@@ -482,7 +482,7 @@ class JournalEntryCreationTests(BaseSetup):
         )
         resp = self.client.get(reverse("journalentry-list"), **h)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(resp.data), 1)
+        self.assertEqual(len(resp.data["results"]), 1)
 
     def test_list_entries_filtered_by_date(self):
         h = self.admin_h()
@@ -519,8 +519,8 @@ class JournalEntryCreationTests(BaseSetup):
             reverse("journalentry-list") + "?date_from=2026-02-01&date_to=2026-02-28",
             **h,
         )
-        self.assertEqual(len(resp.data), 1)
-        self.assertEqual(resp.data[0]["reference"], "JE-010")
+        self.assertEqual(len(resp.data["results"]), 1)
+        self.assertEqual(resp.data["results"][0]["reference"], "JE-010")
 
     def test_journal_entry_immutable_no_update(self):
         h = self.admin_h()
@@ -1045,10 +1045,10 @@ class MultiTenantIsolationTests(APITestCase):
 
         list_a = self.client.get(reverse("journalentry-list"), **h_a).data
         list_b = self.client.get(reverse("journalentry-list"), **h_b).data
-        self.assertEqual(len(list_a), 1)
-        self.assertEqual(len(list_b), 1)
-        self.assertEqual(list_a[0]["reference"], "JE-A-001")
-        self.assertEqual(list_b[0]["reference"], "JE-B-001")
+        self.assertEqual(len(list_a["results"]), 1)
+        self.assertEqual(len(list_b["results"]), 1)
+        self.assertEqual(list_a["results"][0]["reference"], "JE-A-001")
+        self.assertEqual(list_b["results"][0]["reference"], "JE-B-001")
 
     def test_cross_tenant_account_not_accessible(self):
         h_a = _headers(self.client, email="admin@a.com", tenant=self.tenant_a.id)
@@ -1128,7 +1128,7 @@ class MultiTenantIsolationTests(APITestCase):
         self.assertEqual(resp.status_code, status.HTTP_400_BAD_REQUEST)
 
         list_a = self.client.get(reverse("journalentry-list"), **h_a).data
-        self.assertEqual(len(list_a), 0)
+        self.assertEqual(len(list_a["results"]), 0)
 
     def test_mixed_tenant_journal_entry_rejected(self):
         h_a = _headers(self.client, email="admin@a.com", tenant=self.tenant_a.id)

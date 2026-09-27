@@ -4,9 +4,10 @@ import { getAuth } from '../../services/api'
 import { inventoryService } from '../../services/inventoryService'
 import { useToast } from '../../components/ui'
 import {
-  Alert, Badge, Button, ConfirmDialog, PageContainer, PageHeader, Table,
+  Alert, Badge, Button, ConfirmDialog, PageContainer, PageHeader, Pagination, Table,
 } from '../../components/ui'
 import { space } from '../../lib/tokens'
+import { PAGE_SIZE } from '../../lib/pagination'
 
 const statusTone = { Draft: 'warning', Posted: 'success' }
 
@@ -17,17 +18,29 @@ export default function AdjustmentsPage() {
   const [adjustments, setAdjustments] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [confirm, setConfirm] = useState(null)
   const [busy, setBusy] = useState(false)
 
   const fetchAdjustments = useCallback(() => {
-    inventoryService.getAdjustments()
-      .then(({ data }) => setAdjustments(data))
+    inventoryService.getAdjustments({ page })
+      .then(({ data }) => {
+        if ((data.results || []).length === 0 && page > 1) {
+          return inventoryService.getAdjustments({ page: 1 }).then((first) => {
+            setAdjustments(first.data.results || [])
+            setTotal(first.data.count ?? 0)
+            setPage(1)
+          })
+        }
+        setAdjustments(data.results || [])
+        setTotal(data.count ?? 0)
+      })
       .catch(() => setError('Failed to load adjustments. Please try again.'))
       .finally(() => setLoading(false))
-  }, [])
+  }, [page])
 
   useEffect(() => { fetchAdjustments() }, [fetchAdjustments])
 
@@ -140,6 +153,14 @@ export default function AdjustmentsPage() {
         emptyTitle="No adjustments found"
         emptyDescription="Create a draft adjustment to correct stock quantities."
         emptyAction={canManage ? <Button variant="primary" onClick={handleOpenCreate}>New Adjustment</Button> : undefined}
+      />
+
+      <Pagination
+        page={page}
+        pageSize={PAGE_SIZE}
+        total={total}
+        onPageChange={setPage}
+        style={{ marginTop: space[3], justifyContent: 'flex-start' }}
       />
 
       <AdjustmentForm

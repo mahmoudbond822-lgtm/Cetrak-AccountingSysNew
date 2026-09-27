@@ -1,4 +1,6 @@
-﻿from rest_framework import serializers
+﻿from decimal import Decimal
+
+from rest_framework import serializers
 
 from apps.accounting.serializers import TenantScopedAccountField
 from apps.inventory.serializers import TenantScopedProductField
@@ -215,12 +217,17 @@ class SalesInvoiceSerializer(serializers.ModelSerializer):
         }
 
     def get_paid_amount(self, obj):
-        service = PaymentService(obj.tenant_id)
-        return "{:.4f}".format(service.invoice_paid_amount(obj))
+        paid = getattr(obj, "paid_amount", None)
+        if paid is None:
+            paid = PaymentService(obj.tenant_id).invoice_paid_amount(obj)
+        return "{:.4f}".format(paid)
 
     def get_outstanding_balance(self, obj):
-        service = PaymentService(obj.tenant_id)
-        return "{:.4f}".format(service.invoice_outstanding(obj))
+        paid = getattr(obj, "paid_amount", None)
+        if paid is None:
+            paid = PaymentService(obj.tenant_id).invoice_paid_amount(obj)
+        outstanding = max(obj.total - paid, Decimal("0"))
+        return "{:.4f}".format(outstanding)
 
     def validate(self, data):
         invoice_date = data.get("invoice_date")
@@ -293,7 +300,9 @@ class PaymentSerializer(serializers.ModelSerializer):
 
     def get_invoice(self, obj):
         invoice = obj.invoice
-        service = PaymentService(obj.tenant_id)
+        paid = getattr(obj, "_invoice_paid", None)
+        if paid is None:
+            paid = PaymentService(obj.tenant_id).invoice_paid_amount(invoice)
         return {
             "id": str(invoice.id),
             "number": invoice.number,
@@ -303,8 +312,10 @@ class PaymentSerializer(serializers.ModelSerializer):
                 "name": invoice.customer.name,
             },
             "total": "{:.4f}".format(invoice.total),
-            "paid_amount": "{:.4f}".format(service.invoice_paid_amount(invoice)),
-            "outstanding_balance": "{:.4f}".format(service.invoice_outstanding(invoice)),
+            "paid_amount": "{:.4f}".format(paid),
+            "outstanding_balance": "{:.4f}".format(
+                max(invoice.total - paid, Decimal("0"))
+            ),
         }
 
     def validate_amount(self, value):

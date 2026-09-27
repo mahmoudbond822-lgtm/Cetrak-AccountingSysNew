@@ -1,4 +1,5 @@
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
@@ -41,6 +42,9 @@ class ProductViewSet(viewsets.ModelViewSet):
         is_active = self.request.query_params.get("is_active")
         if is_active is not None:
             qs = qs.filter(is_active=is_active.lower() == "true")
+        search = self.request.query_params.get("search")
+        if search:
+            qs = qs.filter(Q(sku__icontains=search) | Q(name__icontains=search))
         return qs.order_by("sku")
 
     def create(self, request, *args, **kwargs):
@@ -130,7 +134,7 @@ class StockBalanceViewSet(viewsets.ReadOnlyModelViewSet):
         warehouse_id = self.request.query_params.get("warehouse_id")
         if warehouse_id:
             qs = qs.filter(warehouse_id=warehouse_id)
-        return qs.order_by("product__sku")
+        return qs.order_by("product__sku", "id")
 
 
 class StockMovementViewSet(viewsets.ReadOnlyModelViewSet):
@@ -156,7 +160,7 @@ class StockMovementViewSet(viewsets.ReadOnlyModelViewSet):
         movement_type = self.request.query_params.get("movement_type")
         if movement_type:
             qs = qs.filter(movement_type=movement_type)
-        return qs.order_by("-created_at")
+        return qs.order_by("-created_at", "-id")
 
 
 class StockAdjustmentViewSet(viewsets.ModelViewSet):
@@ -175,7 +179,7 @@ class StockAdjustmentViewSet(viewsets.ModelViewSet):
         status_param = self.request.query_params.get("status")
         if status_param:
             qs = qs.filter(status=status_param)
-        return qs
+        return qs.order_by("-created_at", "-id")
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)

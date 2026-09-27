@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from rest_framework import serializers
 
 from apps.accounting.serializers import TenantScopedAccountField
@@ -216,12 +218,17 @@ class PurchaseInvoiceSerializer(serializers.ModelSerializer):
         }
 
     def get_paid_amount(self, obj):
-        service = PaymentService(obj.tenant_id)
-        return "{:.4f}".format(service.purchase_paid_amount(obj))
+        paid = getattr(obj, "paid_amount", None)
+        if paid is None:
+            paid = PaymentService(obj.tenant_id).purchase_paid_amount(obj)
+        return "{:.4f}".format(paid)
 
     def get_outstanding_balance(self, obj):
-        service = PaymentService(obj.tenant_id)
-        return "{:.4f}".format(service.purchase_outstanding(obj))
+        paid = getattr(obj, "paid_amount", None)
+        if paid is None:
+            paid = PaymentService(obj.tenant_id).purchase_paid_amount(obj)
+        outstanding = max(obj.total - paid, Decimal("0"))
+        return "{:.4f}".format(outstanding)
 
     def validate(self, data):
         invoice_date = data.get("invoice_date")
@@ -304,7 +311,9 @@ class PurchasePaymentSerializer(serializers.ModelSerializer):
 
     def get_purchase_invoice(self, obj):
         invoice = obj.purchase_invoice
-        service = PaymentService(obj.tenant_id)
+        paid = getattr(obj, "_invoice_paid", None)
+        if paid is None:
+            paid = PaymentService(obj.tenant_id).purchase_paid_amount(invoice)
         return {
             "id": str(invoice.id),
             "number": invoice.number,
@@ -314,9 +323,9 @@ class PurchasePaymentSerializer(serializers.ModelSerializer):
                 "name": invoice.vendor.name,
             },
             "total": "{:.4f}".format(invoice.total),
-            "paid_amount": "{:.4f}".format(service.purchase_paid_amount(invoice)),
+            "paid_amount": "{:.4f}".format(paid),
             "outstanding_balance": "{:.4f}".format(
-                service.purchase_outstanding(invoice)
+                max(invoice.total - paid, Decimal("0"))
             ),
         }
 

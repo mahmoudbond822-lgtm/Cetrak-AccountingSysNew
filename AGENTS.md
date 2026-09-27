@@ -25,22 +25,34 @@ Current phase: WORKING TREE CLEAN — all completed streams are committed. Visua
    re-export removed; `backend/.env.example` documents the broker convention (`.env` stays gitignored).
    Opt-in real-broker integration test gated on `CETRAK_CELERY_INTEGRATION=1`. No accounting/auth/API/
    frontend/deployment change; `config/celery.py` untouched. Report: `specs/026-celery/report.md`.
+5. **AUD-015 email delivery** (**committed**) — `core/mail.py` + Celery-backed `send_email` task,
+   invitation email templates, env-driven email config in `base.py`/`prod.py`/`.env.example`/`render.yaml`.
+   First real consumer of the AUD-026 Celery substrate. Report: `docs/audits/AUD-015-implementation-report.md`.
+6. **AUD-029 list pagination + invoice N+1** (**committed**) — `apps/core/pagination.py`
+   (`DefaultPagination`: 25/page, `?page_size=` capped at 100) is the DRF default; every growing list
+   returns the `count`/`next`/`previous`/`results` envelope with a unique ordering tiebreaker; invoice and
+   payment `paid_amount`/`outstanding_balance` are annotated (one GROUP BY / one correlated subquery)
+   instead of two service queries per row. Deliberately unpaginated: accounts (picker + tree), ledger
+   (running balance), reports. 12 list pages read the envelope and page state; product search is
+   server-side. `services/api.js` untouched. Report: `docs/audits/AUD-029-implementation-report.md`.
 
 Committed since 012-H2: 013 auto-customer-code, 014-auto-journal-entry-code, 015 auto-vendor-code,
-016 auto-invoice-number, the Frontend Design System v1, AUD-025 bcrypt, and AUD-026 Celery infrastructure.
+016 auto-invoice-number, the Frontend Design System v1, AUD-025 bcrypt, AUD-026 Celery infrastructure,
+AUD-015 email delivery, and AUD-029 list pagination.
 Features 001–012 (incl. H2 identity/session hardening) remain implemented. Working tree is clean.
 
 ## Verification (run this session)
 
 - Backend: `cd backend; $env:DJANGO_SETTINGS_MODULE="config.settings.test"; py -m pytest apps/ -q` →
-  **455 passed, 2 skipped** (436 baseline + 19 new Celery tests; skips = 1 pre-existing + 1 opt-in
+  **518 passed, 2 skipped** (506 baseline + 12 pagination tests; skips = 1 pre-existing + 1 opt-in
   Redis integration round-trip)
-- Frontend: `npm run build` clean — 156 modules, 437.27 kB JS / 122.32 kB gzip, 11.67 kB CSS
+- Frontend: `npm run build` clean — 157 modules, 443.78 kB JS / 123.61 kB gzip, 11.67 kB CSS
 - Frontend: `npm run lint` → **13 problems** (12 errors, 1 warning), all pre-existing categories
   (11× `react-hooks/set-state-in-effect`, 1× `exhaustive-deps`, 1× `no-undef` `process` in
-  `vite.config.js`). Down from the 18-problem baseline; the 5 removed were the unused-variable errors
-  the audit predicted. Zero new lint debt, no rules weakened.
+  `vite.config.js`). Unchanged from the locked baseline; zero new lint debt, no rules weakened.
 - Migrations: `py manage.py makemigrations --check --dry-run` → "No changes detected"
+- Latest independent re-audit: `docs/audits/AUD-003-final-production-readiness-reaudit.md` →
+  **GO (92/100)**, all P1 closed, no go-live blockers.
 
 ## Constraints
 
@@ -51,9 +63,9 @@ Features 001–012 (incl. H2 identity/session hardening) remain implemented. Wor
 
 ## Next candidates (documented, not started)
 
-- P2 audit items AUD-010, 011, 012, 015 and P3 items AUD-019, 023, 027, 029 — natural next: AUD-015
-  (email delivery, which now has the Celery substrate AUD-026 built). See
-  `docs/audits/production-hardening-h2-report-001.md`.
+- P2 audit items AUD-010, 011, 012 and P3 items AUD-019, 023, 027 (AUD-015 and AUD-029 are now
+  closed). See `docs/audits/production-hardening-h2-report-001.md` and the AUD-003 final re-audit
+  (`docs/audits/AUD-003-final-production-readiness-reaudit.md`).
 - Manual visual QA of the design system was completed (`frontend-design-system-v1-visual-qa.md`); an optional
   in-browser human spot-check across both themes remains the only non-automated confirmation.
 - Cleanup of the 11 pre-existing `set-state-in-effect` fetch effects.

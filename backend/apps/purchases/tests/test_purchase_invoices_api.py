@@ -225,11 +225,11 @@ class PurchaseInvoiceCreateTests(BaseSetup):
         )
         other_h = _headers(self.client, email="other@example.com", tenant=other_tenant.id)
         resp = self.client.get(reverse("purchase-invoice-list"), **other_h)
-        self.assertEqual(len(resp.data), 1)
-        self.assertEqual(resp.data[0]["number"], "OTHER-1")
+        self.assertEqual(len(resp.data["results"]), 1)
+        self.assertEqual(resp.data["results"][0]["number"], "OTHER-1")
         resp = self.client.get(reverse("purchase-invoice-list"), **h)
-        self.assertEqual(len(resp.data), 1)
-        self.assertEqual(resp.data[0]["number"], "PUR-2026-001")
+        self.assertEqual(len(resp.data["results"]), 1)
+        self.assertEqual(resp.data["results"][0]["number"], "PUR-2026-001")
 
 
 class PurchaseInvoicePostingTests(BaseSetup):

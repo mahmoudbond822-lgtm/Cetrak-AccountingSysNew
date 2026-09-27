@@ -109,6 +109,8 @@ REST_FRAMEWORK = {
         "anon": "20/hour",
         "user": "100/hour",
     },
+    "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.DefaultPagination",
+    "PAGE_SIZE": 25,
     "EXCEPTION_HANDLER": "rest_framework.views.exception_handler",
 }
 

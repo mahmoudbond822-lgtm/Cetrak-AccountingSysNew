@@ -28,6 +28,7 @@ class AccountViewSet(viewsets.ModelViewSet):
     serializer_class = AccountSerializer
     permission_classes = [HasAccountingAccess]
     http_method_names = ["get", "post", "patch", "head", "options"]
+    pagination_class = None
 
     def get_queryset(self):
         svc = AccountingService(self.request.tenant_id)
@@ -87,7 +88,9 @@ class JournalEntryViewSet(viewsets.ReadOnlyModelViewSet):
         svc = JournalEntryService(self.request.tenant_id)
         date_from = self.request.query_params.get("date_from")
         date_to = self.request.query_params.get("date_to")
-        return svc.list_entries(date_from=date_from, date_to=date_to)
+        return svc.list_entries(
+            date_from=date_from, date_to=date_to
+        ).order_by("-date", "-id")
 
     def create(self, request, *args, **kwargs):
         svc = JournalEntryService(request.tenant_id)

@@ -4,9 +4,10 @@ import { getAuth } from '../../services/api'
 import { salesService } from '../../services/salesService'
 import { useToast } from '../../components/ui'
 import {
-  Alert, Badge, Button, ConfirmDialog, PageContainer, PageHeader, Select, Table,
+  Alert, Badge, Button, ConfirmDialog, PageContainer, PageHeader, Pagination, Select, Table,
 } from '../../components/ui'
 import { space } from '../../lib/tokens'
+import { PAGE_SIZE } from '../../lib/pagination'
 
 const money = (v) => Number(v || 0).toFixed(2)
 
@@ -34,6 +35,8 @@ export default function InvoicesPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [notice, setNotice] = useState('')
@@ -45,19 +48,29 @@ export default function InvoicesPage() {
     setLoading(true)
     setError('')
     try {
-      const { data } = await salesService.getInvoices(statusFilter ? { status: statusFilter } : {})
-      setInvoices(data)
+      const params = { page }
+      if (statusFilter) params.status = statusFilter
+      const { data } = await salesService.getInvoices(params)
+      if ((data.results || []).length === 0 && page > 1) {
+        const first = await salesService.getInvoices({ ...params, page: 1 })
+        setInvoices(first.data.results || [])
+        setTotal(first.data.count ?? 0)
+        setPage(1)
+      } else {
+        setInvoices(data.results || [])
+        setTotal(data.count ?? 0)
+      }
     } catch {
       setError('Failed to load invoices. Please try again.')
     } finally {
       setLoading(false)
     }
-  }, [statusFilter])
+  }, [statusFilter, page])
 
   const fetchCustomers = useCallback(async () => {
     try {
-      const { data } = await salesService.getCustomers()
-      setCustomers(data)
+      const { data } = await salesService.getCustomers({ page_size: 100 })
+      setCustomers(data.results || [])
     } catch {
       /* customer list is optional for the invoice form */
     }
@@ -178,7 +191,7 @@ export default function InvoicesPage() {
           <Select
             label="Status"
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
           >
             <option value="">All</option>
             <option value="Draft">Draft</option>
@@ -206,6 +219,14 @@ export default function InvoicesPage() {
         emptyTitle="No invoices found"
         emptyDescription="Create a draft invoice to get started."
         emptyAction={canManage ? <Button variant="primary" onClick={handleOpenCreate}>New Invoice</Button> : undefined}
+      />
+
+      <Pagination
+        page={page}
+        pageSize={PAGE_SIZE}
+        total={total}
+        onPageChange={setPage}
+        style={{ marginTop: space[3], justifyContent: 'flex-start' }}
       />
 
       <InvoiceForm

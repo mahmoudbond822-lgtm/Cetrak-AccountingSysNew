@@ -75,8 +75,8 @@ class ProductCrudTests(BaseSetup):
             reverse("product-list"), {"is_active": "true"}, **h
         )
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(resp.data), 1)
-        self.assertEqual(resp.data[0]["sku"], "P-001")
+        self.assertEqual(len(resp.data["results"]), 1)
+        self.assertEqual(resp.data["results"][0]["sku"], "P-001")
 
     def test_update_product(self):
         h = self.admin_h()
@@ -191,7 +191,7 @@ class ProductTenantIsolationTests(BaseSetup):
         self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
         resp = self.client.get(reverse("product-list"), **h)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(resp.data), 0)
+        self.assertEqual(len(resp.data["results"]), 0)
 
     def test_same_sku_allowed_across_tenants(self):
         h = self.admin_h()

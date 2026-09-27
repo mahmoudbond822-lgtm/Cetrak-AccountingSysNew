@@ -357,15 +357,15 @@ class PaymentListTests(PaymentSetup):
         drafts = self.client.get(
             reverse("payment-list"), {"status": "Draft"}, **h
         )
-        self.assertEqual(len(drafts.data), 1)
+        self.assertEqual(len(drafts.data["results"]), 1)
         posted = self.client.get(
             reverse("payment-list"), {"status": "Posted"}, **h
         )
-        self.assertEqual(len(posted.data), 1)
+        self.assertEqual(len(posted.data["results"]), 1)
         filtered = self.client.get(
             reverse("payment-list"), {"invoice": invoice["id"]}, **h
         )
-        self.assertEqual(len(filtered.data), 2)
+        self.assertEqual(len(filtered.data["results"]), 2)
 
     def test_payments_tenant_scoped(self):
         h = self.admin_h()
@@ -383,7 +383,7 @@ class PaymentListTests(PaymentSetup):
             self.client, email="other@example.com", tenant=other.id
         )
         resp = self.client.get(reverse("payment-list"), **other_h)
-        self.assertEqual(resp.data, [])
+        self.assertEqual(resp.data["results"], [])
 
     def test_invoice_serializer_exposes_balance_fields(self):
         h = self.admin_h()

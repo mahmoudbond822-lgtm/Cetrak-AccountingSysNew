@@ -99,7 +99,7 @@ class VendorCrudTests(BaseSetup):
         other_tenant = Tenant.objects.create(name="Other Corp")
         Vendor.objects.create(tenant=other_tenant, code="OTHER-1", name="Other Co")
         resp = self.client.get(reverse("vendor-list"), **h)
-        self.assertEqual(len(resp.data), 1)
+        self.assertEqual(len(resp.data["results"]), 1)
 
     def test_list_vendors_filters_inactive(self):
         h = self.admin_h()
@@ -109,7 +109,7 @@ class VendorCrudTests(BaseSetup):
         resp = self.client.get(
             reverse("vendor-list") + "?is_active=false", **h
         )
-        self.assertEqual(len(resp.data), 1)
+        self.assertEqual(len(resp.data["results"]), 1)
 
     def test_update_vendor(self):
         h = self.admin_h()

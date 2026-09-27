@@ -4,9 +4,10 @@ import { getAuth } from '../../services/api'
 import { salesService } from '../../services/salesService'
 import { useToast } from '../../components/ui'
 import {
-  Alert, Badge, Button, ConfirmDialog, PageContainer, PageHeader, Table,
+  Alert, Badge, Button, ConfirmDialog, PageContainer, PageHeader, Pagination, Table,
 } from '../../components/ui'
 import { space } from '../../lib/tokens'
+import { PAGE_SIZE } from '../../lib/pagination'
 
 function nextCustomerCode(customers) {
   const used = new Set()
@@ -26,6 +27,8 @@ export default function CustomersPage() {
   const [customers, setCustomers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [notice, setNotice] = useState('')
@@ -37,14 +40,22 @@ export default function CustomersPage() {
     setLoading(true)
     setError('')
     try {
-      const { data } = await salesService.getCustomers()
-      setCustomers(data)
+      const { data } = await salesService.getCustomers({ page })
+      if ((data.results || []).length === 0 && page > 1) {
+        const first = await salesService.getCustomers({ page: 1 })
+        setCustomers(first.data.results || [])
+        setTotal(first.data.count ?? 0)
+        setPage(1)
+      } else {
+        setCustomers(data.results || [])
+        setTotal(data.count ?? 0)
+      }
     } catch {
       setError('Failed to load customers. Please try again.')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [page])
 
   useEffect(() => { fetchCustomers() }, [fetchCustomers])
 
@@ -151,6 +162,14 @@ export default function CustomersPage() {
         emptyTitle="No customers yet"
         emptyDescription="Create your first customer to start issuing invoices."
         emptyAction={canManage ? <Button variant="primary" onClick={handleOpenCreate}>Create Customer</Button> : undefined}
+      />
+
+      <Pagination
+        page={page}
+        pageSize={PAGE_SIZE}
+        total={total}
+        onPageChange={setPage}
+        style={{ marginTop: space[3], justifyContent: 'flex-start' }}
       />
 
       <CustomerModal

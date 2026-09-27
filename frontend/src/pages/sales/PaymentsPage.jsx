@@ -4,9 +4,10 @@ import { getAuth } from '../../services/api'
 import { salesService } from '../../services/salesService'
 import { useToast } from '../../components/ui'
 import {
-  Alert, Badge, Button, ConfirmDialog, PageContainer, PageHeader, Select, Table,
+  Alert, Badge, Button, ConfirmDialog, PageContainer, PageHeader, Pagination, Select, Table,
 } from '../../components/ui'
 import { space } from '../../lib/tokens'
+import { PAGE_SIZE } from '../../lib/pagination'
 
 const money = (v) => Number(v || 0).toFixed(2)
 
@@ -23,21 +24,35 @@ export default function PaymentsPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
   const [showModal, setShowModal] = useState(false)
   const [editing, setEditing] = useState(null)
   const [confirm, setConfirm] = useState(null)
   const [busy, setBusy] = useState(false)
 
   const fetchPayments = useCallback(() => {
-    salesService.getPayments(statusFilter ? { status: statusFilter } : {})
-      .then(({ data }) => setPayments(data))
+    const params = { page }
+    if (statusFilter) params.status = statusFilter
+    salesService.getPayments(params)
+      .then(({ data }) => {
+        if ((data.results || []).length === 0 && page > 1) {
+          return salesService.getPayments({ ...params, page: 1 }).then((first) => {
+            setPayments(first.data.results || [])
+            setTotal(first.data.count ?? 0)
+            setPage(1)
+          })
+        }
+        setPayments(data.results || [])
+        setTotal(data.count ?? 0)
+      })
       .catch(() => setError('Failed to load payments. Please try again.'))
       .finally(() => setLoading(false))
-  }, [statusFilter])
+  }, [statusFilter, page])
 
   const fetchPostedInvoices = useCallback(() => {
-    salesService.getInvoices({ status: 'Posted' })
-      .then(({ data }) => setPostedInvoices(data))
+    salesService.getInvoices({ status: 'Posted', page_size: 100 })
+      .then(({ data }) => setPostedInvoices(data.results || []))
       .catch(() => { /* posted invoice list is optional for the payment form */ })
   }, [])
 
@@ -156,7 +171,7 @@ export default function PaymentsPage() {
           <Select
             label="Status"
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}
           >
             <option value="">All</option>
             <option value="Draft">Draft</option>
@@ -178,6 +193,14 @@ export default function PaymentsPage() {
         emptyTitle="No payments found"
         emptyDescription="Record a customer payment to get started."
         emptyAction={canManage ? <Button variant="primary" onClick={handleOpenCreate}>New Payment</Button> : undefined}
+      />
+
+      <Pagination
+        page={page}
+        pageSize={PAGE_SIZE}
+        total={total}
+        onPageChange={setPage}
+        style={{ marginTop: space[3], justifyContent: 'flex-start' }}
       />
 
       <PaymentForm

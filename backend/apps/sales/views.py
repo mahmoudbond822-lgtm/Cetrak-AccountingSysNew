@@ -1,4 +1,13 @@
 from django.db import IntegrityError
+from django.db.models import (
+    DecimalField,
+    OuterRef,
+    Q,
+    Subquery,
+    Sum,
+    Value,
+)
+from django.db.models.functions import Coalesce
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -102,6 +111,15 @@ class SalesInvoiceViewSet(viewsets.ModelViewSet):
         status_param = self.request.query_params.get("status")
         if status_param:
             qs = qs.filter(status=status_param)
+        qs = qs.annotate(
+            paid_amount=Coalesce(
+                Sum(
+                    "payments__amount",
+                    filter=Q(payments__status=models.Payment.Status.POSTED),
+                ),
+                Value(0, output_field=DecimalField(max_digits=19, decimal_places=4)),
+            )
+        ).order_by("-created_at", "-id")
         return qs.prefetch_related("lines").select_related("customer")
 
     def create(self, request, *args, **kwargs):
@@ -192,6 +210,21 @@ class PaymentViewSet(viewsets.ModelViewSet):
         invoice_param = self.request.query_params.get("invoice")
         if invoice_param:
             qs = qs.filter(invoice_id=invoice_param)
+        invoice_paid = (
+            models.Payment.objects.filter(
+                invoice_id=OuterRef("invoice_id"),
+                status=models.Payment.Status.POSTED,
+            )
+            .values("invoice_id")
+            .annotate(total=Sum("amount"))
+            .values("total")
+        )
+        qs = qs.annotate(
+            _invoice_paid=Coalesce(
+                Subquery(invoice_paid),
+                Value(0, output_field=DecimalField(max_digits=19, decimal_places=4)),
+            )
+        ).order_by("-created_at", "-id")
         return qs.select_related("invoice__customer", "cash_account")
 
     def create(self, request, *args, **kwargs):

@@ -1,4 +1,13 @@
 from django.db import IntegrityError
+from django.db.models import (
+    DecimalField,
+    OuterRef,
+    Q,
+    Subquery,
+    Sum,
+    Value,
+)
+from django.db.models.functions import Coalesce
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -117,6 +126,18 @@ class PurchaseInvoiceViewSet(viewsets.ModelViewSet):
         status_param = self.request.query_params.get("status")
         if status_param:
             qs = qs.filter(status=status_param)
+        qs = qs.annotate(
+            paid_amount=Coalesce(
+                Sum(
+                    "payments__amount",
+                    filter=Q(
+                        payments__direction=Payment.Direction.PAYABLE,
+                        payments__status=Payment.Status.POSTED,
+                    ),
+                ),
+                Value(0, output_field=DecimalField(max_digits=19, decimal_places=4)),
+            )
+        ).order_by("-created_at", "-id")
         return qs.prefetch_related("lines").select_related("vendor")
 
     def create(self, request, *args, **kwargs):
@@ -209,6 +230,22 @@ class PurchasePaymentViewSet(viewsets.ModelViewSet):
         invoice_param = self.request.query_params.get("purchase_invoice")
         if invoice_param:
             qs = qs.filter(purchase_invoice_id=invoice_param)
+        invoice_paid = (
+            Payment.objects.filter(
+                purchase_invoice_id=OuterRef("purchase_invoice_id"),
+                direction=Payment.Direction.PAYABLE,
+                status=Payment.Status.POSTED,
+            )
+            .values("purchase_invoice_id")
+            .annotate(total=Sum("amount"))
+            .values("total")
+        )
+        qs = qs.annotate(
+            _invoice_paid=Coalesce(
+                Subquery(invoice_paid),
+                Value(0, output_field=DecimalField(max_digits=19, decimal_places=4)),
+            )
+        ).order_by("-created_at", "-id")
         return qs.select_related("purchase_invoice__vendor", "cash_account")
 
     def create(self, request, *args, **kwargs):

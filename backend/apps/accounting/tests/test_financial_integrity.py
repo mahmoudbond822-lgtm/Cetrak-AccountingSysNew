@@ -190,9 +190,9 @@ class PostedEntryReportTests(FinancialIntegritySetup):
         self._create_draft(self.h, self._sale_payload("JE-FLAG-001"))
         resp = self.client.get(reverse("journalentry-list"), **self.h)
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(resp.data), 1)
-        self.assertIn("posted", resp.data[0])
-        self.assertFalse(resp.data[0]["posted"])
+        self.assertEqual(len(resp.data["results"]), 1)
+        self.assertIn("posted", resp.data["results"][0])
+        self.assertFalse(resp.data["results"][0]["posted"])
 
 
 class BalanceSheetNetLossTests(FinancialIntegritySetup):

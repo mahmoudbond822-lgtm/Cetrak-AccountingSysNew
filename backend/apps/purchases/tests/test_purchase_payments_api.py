@@ -356,17 +356,17 @@ class PurchasePaymentListTests(BaseSetup):
         drafts = self.client.get(
             reverse("purchase-payment-list"), {"status": "Draft"}, **h
         )
-        self.assertEqual(len(drafts.data), 1)
+        self.assertEqual(len(drafts.data["results"]), 1)
         posted = self.client.get(
             reverse("purchase-payment-list"), {"status": "Posted"}, **h
         )
-        self.assertEqual(len(posted.data), 1)
+        self.assertEqual(len(posted.data["results"]), 1)
         filtered = self.client.get(
             reverse("purchase-payment-list"),
             {"purchase_invoice": invoice["id"]},
             **h,
         )
-        self.assertEqual(len(filtered.data), 2)
+        self.assertEqual(len(filtered.data["results"]), 2)
 
     def test_list_only_returns_payable_payments(self):
         h = self.admin_h()
@@ -391,8 +391,8 @@ class PurchasePaymentListTests(BaseSetup):
             cash_account=Account.objects.get(pk=cash["id"]),
         )
         resp = self.client.get(reverse("purchase-payment-list"), **h)
-        self.assertEqual(len(resp.data), 1)
-        self.assertEqual(resp.data[0]["number"], "PAY-001")
+        self.assertEqual(len(resp.data["results"]), 1)
+        self.assertEqual(resp.data["results"][0]["number"], "PAY-001")
 
     def test_payments_tenant_scoped(self):
         h = self.admin_h()
@@ -408,7 +408,7 @@ class PurchasePaymentListTests(BaseSetup):
         )
         other_h = _headers(self.client, email="other@example.com", tenant=other.id)
         resp = self.client.get(reverse("purchase-payment-list"), **other_h)
-        self.assertEqual(resp.data, [])
+        self.assertEqual(resp.data["results"], [])
 
     def test_cross_tenant_payment_lookup_404(self):
         h = self.admin_h()

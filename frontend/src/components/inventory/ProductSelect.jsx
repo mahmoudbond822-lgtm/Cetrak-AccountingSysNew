@@ -10,8 +10,8 @@ export default function ProductSelect({ value, onChange, includeEmpty = true,
   const [error, setError] = useState('')
 
   useEffect(() => {
-    inventoryService.getProducts()
-      .then(({ data }) => setProducts(data))
+    inventoryService.getProducts({ page_size: 100 })
+      .then(({ data }) => setProducts(data.results || []))
       .catch(() => setError('Failed to load products.'))
   }, [])
 

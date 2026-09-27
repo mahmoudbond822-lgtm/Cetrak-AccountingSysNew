@@ -311,7 +311,7 @@ class CustomerTests(BaseSetup):
             tenant=other_tenant, code="OTHER-1", name="Other Co"
         )
         resp = self.client.get(reverse("customer-list"), **h)
-        self.assertEqual(len(resp.data), 1)
+        self.assertEqual(len(resp.data["results"]), 1)
 
     def test_update_customer(self):
         h = self.admin_h()
@@ -506,7 +506,7 @@ class InvoiceTests(BaseSetup):
         self.make_draft_invoice(h=h, number="INV-001")
         self.make_draft_invoice(h=h, number="INV-002")
         resp = self.client.get(reverse("invoice-list") + "?status=Draft", **h)
-        self.assertEqual(len(resp.data), 2)
+        self.assertEqual(len(resp.data["results"]), 2)
 
     def test_update_draft_invoice_recomputes(self):
         h = self.admin_h()
@@ -557,7 +557,7 @@ class InvoiceTests(BaseSetup):
             invoice_date="2026-08-01",
         )
         resp = self.client.get(reverse("invoice-list"), **h)
-        self.assertEqual(len(resp.data), 1)
+        self.assertEqual(len(resp.data["results"]), 1)
 
 
 class InvoicePostingTests(BaseSetup):
@@ -741,9 +741,9 @@ class MultiTenantIsolationTests(BaseSetup):
         self.make_draft_invoice(h=h, number="INV-001")
 
         resp = self.client.get(reverse("customer-list"), **other_h)
-        self.assertEqual(resp.data, [])
+        self.assertEqual(resp.data["results"], [])
         resp = self.client.get(reverse("invoice-list"), **other_h)
-        self.assertEqual(resp.data, [])
+        self.assertEqual(resp.data["results"], [])
 
     def test_cross_tenant_object_lookup_404(self):
         h = self.admin_h()

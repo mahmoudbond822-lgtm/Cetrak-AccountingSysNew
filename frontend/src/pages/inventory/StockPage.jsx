@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback } from 'react'
 import ProductSelect from '../../components/inventory/ProductSelect'
 import { inventoryService } from '../../services/inventoryService'
 import {
-  Alert, Card, CardBody, PageContainer, PageHeader, Select, Skeleton, Table,
+  Alert, Card, CardBody, PageContainer, PageHeader, Pagination, Select, Skeleton, Table,
 } from '../../components/ui'
 import { font, space } from '../../lib/tokens'
+import { PAGE_SIZE } from '../../lib/pagination'
 
 const fmt = (v) => Number(v || 0).toFixed(4)
 
@@ -15,21 +16,47 @@ export default function StockPage() {
   const [error, setError] = useState('')
   const [productId, setProductId] = useState('')
   const [movementType, setMovementType] = useState('')
+  const [balancePage, setBalancePage] = useState(1)
+  const [balanceTotal, setBalanceTotal] = useState(0)
+  const [movementPage, setMovementPage] = useState(1)
+  const [movementTotal, setMovementTotal] = useState(0)
 
   const fetchBalances = useCallback(() => {
-    inventoryService.getBalances(productId ? { product_id: productId } : {})
-      .then(({ data }) => setBalances(data))
+    const params = { page: balancePage }
+    if (productId) params.product_id = productId
+    inventoryService.getBalances(params)
+      .then(({ data }) => {
+        if ((data.results || []).length === 0 && balancePage > 1) {
+          return inventoryService.getBalances({ ...params, page: 1 }).then((first) => {
+            setBalances(first.data.results || [])
+            setBalanceTotal(first.data.count ?? 0)
+            setBalancePage(1)
+          })
+        }
+        setBalances(data.results || [])
+        setBalanceTotal(data.count ?? 0)
+      })
       .catch(() => setError('Failed to load stock balances.'))
-  }, [productId])
+  }, [productId, balancePage])
 
   const fetchMovements = useCallback(() => {
-    const params = {}
+    const params = { page: movementPage }
     if (productId) params.product_id = productId
     if (movementType) params.movement_type = movementType
     inventoryService.getMovements(params)
-      .then(({ data }) => setMovements(data))
+      .then(({ data }) => {
+        if ((data.results || []).length === 0 && movementPage > 1) {
+          return inventoryService.getMovements({ ...params, page: 1 }).then((first) => {
+            setMovements(first.data.results || [])
+            setMovementTotal(first.data.count ?? 0)
+            setMovementPage(1)
+          })
+        }
+        setMovements(data.results || [])
+        setMovementTotal(data.count ?? 0)
+      })
       .catch(() => setError('Failed to load stock movements.'))
-  }, [productId, movementType])
+  }, [productId, movementType, movementPage])
 
   useEffect(() => {
     Promise.all([fetchBalances(), fetchMovements()])
@@ -115,7 +142,7 @@ export default function StockPage() {
           <ProductSelect
             label="Product"
             value={productId}
-            onChange={setProductId}
+            onChange={(id) => { setProductId(id); setBalancePage(1); setMovementPage(1) }}
             placeholder="All products"
             includeEmpty
           />
@@ -124,7 +151,7 @@ export default function StockPage() {
           <Select
             label="Movement Type"
             value={movementType}
-            onChange={(e) => setMovementType(e.target.value)}
+            onChange={(e) => { setMovementType(e.target.value); setMovementPage(1) }}
           >
             <option value="">All types</option>
             <option value="Receipt">Receipt</option>
@@ -152,6 +179,13 @@ export default function StockPage() {
               emptyTitle="No stock balances"
               emptyDescription="Balances appear here once you post receipts or adjustments."
             />
+            <Pagination
+              page={balancePage}
+              pageSize={PAGE_SIZE}
+              total={balanceTotal}
+              onPageChange={setBalancePage}
+              style={{ marginTop: space[3], justifyContent: 'flex-start' }}
+            />
           </div>
           <div style={{ marginBottom: space[6] }}>
             <h2 style={{ fontSize: font.size.sectionTitle, fontWeight: font.weight.semibold, marginBottom: space[3] }}>
@@ -162,6 +196,13 @@ export default function StockPage() {
               data={movements}
               emptyTitle="No stock movements"
               emptyDescription="Receipts, issues and adjustments will be listed here."
+            />
+            <Pagination
+              page={movementPage}
+              pageSize={PAGE_SIZE}
+              total={movementTotal}
+              onPageChange={setMovementPage}
+              style={{ marginTop: space[3], justifyContent: 'flex-start' }}
             />
           </div>
         </>

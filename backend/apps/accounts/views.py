@@ -32,6 +32,7 @@ from apps.accounts.services import _email_key
 from apps.core.models import Tenant
 from apps.core.audit import AuditService
 from apps.core.mail import enqueue_invitation_email
+from apps.core.pagination import DefaultPagination
 
 
 def _mint_refresh(user_id, tenant_id=None, remember_me=False):
@@ -280,9 +281,13 @@ def logout_view(request):
 @permission_classes([IsAuthenticated, IsAdminUser])
 def invitation_list_create_view(request):
     if request.method == "GET":
-        invitations = InvitationService().list_pending(request.tenant_id)
-        serializer = InvitationSerializer(invitations, many=True)
-        return Response({"count": len(serializer.data), "results": serializer.data})
+        invitations = InvitationService().list_pending(
+            request.tenant_id
+        ).order_by("-created_at", "-id")
+        paginator = DefaultPagination()
+        page_items = paginator.paginate_queryset(invitations, request)
+        serializer = InvitationSerializer(page_items, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
     serializer = InvitationCreateSerializer(data=request.data)
     if not serializer.is_valid():
@@ -323,9 +328,11 @@ def invitation_destroy_view(request, invitation_id):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated, IsAdminUser])
 def member_list_view(request):
-    members = TeamService().list_members(request.tenant_id)
-    serializer = MemberSerializer(members, many=True)
-    return Response({"count": len(serializer.data), "results": serializer.data})
+    members = TeamService().list_members(request.tenant_id).order_by("user__email")
+    paginator = DefaultPagination()
+    page_items = paginator.paginate_queryset(members, request)
+    serializer = MemberSerializer(page_items, many=True)
+    return paginator.get_paginated_response(serializer.data)
 
 
 @api_view(["PATCH"])

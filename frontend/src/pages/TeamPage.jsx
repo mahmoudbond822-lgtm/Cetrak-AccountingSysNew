@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import api, { getAuth } from '../services/api'
 import {
-  Alert, Badge, Button, Card, CardBody, ConfirmDialog, EmptyState, Input, PageContainer, PageHeader, Select,
+  Alert, Badge, Button, Card, CardBody, ConfirmDialog, EmptyState, Input, PageContainer, PageHeader, Pagination, Select,
 } from '../components/ui'
 import { useToast } from '../components/ui'
 import { font, space } from '../lib/tokens'
+import { PAGE_SIZE } from '../lib/pagination'
 
 const formStyle = {
   display: 'flex',
@@ -49,6 +50,9 @@ export default function TeamPage() {
   const toast = useToast()
   const [members, setMembers] = useState([])
   const [invitations, setInvitations] = useState([])
+  const [memberPage, setMemberPage] = useState(1)
+  const [memberTotal, setMemberTotal] = useState(0)
+  const [inviteTotal, setInviteTotal] = useState(0)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState('Accountant')
   const [error, setError] = useState('')
@@ -59,9 +63,26 @@ export default function TeamPage() {
 
   useEffect(() => {
     if (!isAdmin) return
-    api.get('/tenants/members/').then(({ data }) => setMembers(data.results)).catch(() => {})
-    api.get('/tenants/invitations/').then(({ data }) => setInvitations(data.results)).catch(() => {})
-  }, [isAdmin])
+    api.get('/tenants/members/', { params: { page: memberPage } })
+      .then(({ data }) => {
+        if ((data.results || []).length === 0 && memberPage > 1) {
+          return api.get('/tenants/members/', { params: { page: 1 } }).then((first) => {
+            setMembers(first.data.results || [])
+            setMemberTotal(first.data.count ?? 0)
+            setMemberPage(1)
+          })
+        }
+        setMembers(data.results)
+        setMemberTotal(data.count ?? 0)
+      })
+      .catch(() => {})
+    api.get('/tenants/invitations/', { params: { page_size: 100 } })
+      .then(({ data }) => {
+        setInvitations(data.results)
+        setInviteTotal(data.count ?? 0)
+      })
+      .catch(() => {})
+  }, [isAdmin, memberPage])
 
   async function handleInvite(e) {
     e.preventDefault()
@@ -196,7 +217,7 @@ export default function TeamPage() {
       <Card style={{ marginBottom: space[6] }}>
         <CardBody>
           <h2 style={{ fontSize: font.size.cardTitle, fontWeight: 600, marginBottom: space[3] }}>
-            Members ({members.length})
+            Members ({memberTotal})
           </h2>
           {members.length === 0 ? (
             <EmptyState
@@ -250,6 +271,13 @@ export default function TeamPage() {
               </table>
             </div>
           )}
+          <Pagination
+            page={memberPage}
+            pageSize={PAGE_SIZE}
+            total={memberTotal}
+            onPageChange={setMemberPage}
+            style={{ marginTop: space[3], justifyContent: 'flex-start' }}
+          />
         </CardBody>
       </Card>
 
@@ -257,7 +285,7 @@ export default function TeamPage() {
         <Card>
           <CardBody>
             <h2 style={{ fontSize: font.size.cardTitle, fontWeight: 600, marginBottom: space[3] }}>
-              Pending invitations ({invitations.length})
+              Pending invitations ({inviteTotal})
             </h2>
             <div style={{ overflowX: 'auto' }}>
               <table style={tableStyle}>
