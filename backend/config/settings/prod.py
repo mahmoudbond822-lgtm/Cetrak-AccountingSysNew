@@ -1,3 +1,4 @@
+import logging
 import os
 
 import dj_database_url
@@ -5,6 +6,8 @@ import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
 
 from .base import *
+
+logger = logging.getLogger("cetrak.security")
 
 
 def _csv_env(name):
@@ -71,6 +74,39 @@ CORS_ALLOW_HEADERS = list(__import__("corsheaders.defaults", fromlist=["default_
 ]
 
 REFRESH_COOKIE_SECURE = True
+
+# --- Authentication throttling (AUD-014) ------------------------------------
+# Throttle state must be shared: gunicorn runs several workers per instance and
+# the service is expected to scale out, so per-process counters would multiply
+# every limit by the number of workers/instances. The same Redis that backs
+# Celery serves the cache (database 1); REDIS_URL is the existing convention
+# documented in backend/.env.example.
+_cache_url = os.environ.get("REDIS_URL", "").strip()
+if _cache_url:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": _cache_url,
+        }
+    }
+else:
+    # Not silent: without a shared cache the limits below only hold per
+    # process, so say so loudly at boot rather than assuming protection.
+    logger.warning(
+        "REDIS_URL is not set: authentication throttling state is process-local "
+        "and every limit is effectively multiplied by the number of web workers. "
+        "Set REDIS_URL to a shared Redis instance."
+    )
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        }
+    }
+
+# The web service is only reachable through the platform's edge proxy, which
+# overwrites X-Forwarded-For, so the client address is taken from it. Without
+# this every request would share the proxy's address.
+AUTH_THROTTLE["TRUST_X_FORWARDED_FOR"] = True
 
 _extra_connect_src = _csv_env("DJANGO_CSP_CONNECT_SRC")
 if _extra_connect_src:

@@ -26,6 +26,20 @@ else:
 REST_FRAMEWORK["DEFAULT_THROTTLE_CLASSES"] = []
 REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {}
 
+# AUD-014: the login/refresh throttles are attached to those endpoints and stay
+# enabled in every other environment, so they are switched off here to keep the
+# rest of the suite behaving exactly as before. apps/accounts/tests/
+# test_auth_throttling.py re-enables them with override_settings and exercises
+# the real limits (and deliberately tightened ones).
+AUTH_THROTTLE = dict(AUTH_THROTTLE, ENABLED=False)
+
+# The throttle state must never depend on an external cache in tests.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+    }
+}
+
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
 

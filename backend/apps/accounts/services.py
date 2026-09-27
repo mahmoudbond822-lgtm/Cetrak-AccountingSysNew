@@ -1,17 +1,179 @@
 import datetime as dt_mod
+import logging
+import math
 import secrets
+import time
 
+from django.conf import settings
+from django.core.cache import cache
 from django.db import IntegrityError, transaction
 from django.utils import timezone
+from django.utils.crypto import salted_hmac
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.core.models import Tenant
 from apps.core.audit import AuditService
 from apps.accounts.models import User, Membership, BlacklistedToken, Invitation
 
+logger = logging.getLogger("cetrak.security.auth")
+
+_cache_failure_reported = False
+
 
 def _email_key(email):
     return str(email or "").strip().lower()
+
+
+def auth_throttle_settings():
+    """Named authentication throttle configuration (see settings.AUTH_THROTTLE)."""
+    return getattr(settings, "AUTH_THROTTLE", {}) or {}
+
+
+class LoginAttemptService:
+    """Failed-credential accounting for the login endpoint (AUD-014).
+
+    Design notes
+    ------------
+    * Existence agnostic: a failure is recorded for an unknown address exactly
+      as for a wrong password, so a throttled response cannot be used to
+      discover which addresses exist.
+    * Bounded in time: the window TTL is written once, by the first failure, and
+      later failures only increment the counter. A sustained attack therefore
+      cannot hold an account blocked beyond ``LOGIN_ACCOUNT_WINDOW_SECONDS``,
+      which is what keeps a targeted lock-out from becoming a denial of
+      service.
+    * Self-healing: a successful login deletes the state, so the account works
+      again the moment its owner proves possession of the password.
+    * Opaque keys: an account is identified by a keyed HMAC of the normalised
+      address, so neither the address nor any credential is written to the
+      cache or to the logs.
+
+    State lives in the Django cache (Redis in production) and is deliberately
+    not persisted: a table of login attempts would add a database write to
+    every failed login, the exact amplification this control exists to stop.
+    """
+
+    KEY_PREFIX = "throttle:auth:login:account"
+
+    def __init__(self, cache_backend=None):
+        self._cache = cache_backend if cache_backend is not None else cache
+
+    # -- keys -------------------------------------------------------------
+    def account_ident(self, email):
+        """Stable, opaque identifier for a login address."""
+        return salted_hmac("apps.accounts.login", _email_key(email)).hexdigest()
+
+    def _count_key(self, ident):
+        return f"{self.KEY_PREFIX}:{ident}:count"
+
+    def _until_key(self, ident):
+        return f"{self.KEY_PREFIX}:{ident}:until"
+
+    # -- cache access -----------------------------------------------------
+    def _report_cache_failure(self):
+        global _cache_failure_reported
+        if _cache_failure_reported:
+            logger.debug(
+                "Authentication throttle cache operation failed.", exc_info=True
+            )
+            return
+        _cache_failure_reported = True
+        logger.warning(
+            "Authentication throttling is degraded: the cache is unavailable, "
+            "so login throttling is not enforced for this request.",
+            exc_info=True,
+        )
+
+    def _call(self, operation, *args):
+        """Run a cache operation, degrading to *fail open* if the cache is down.
+
+        The cache is shared infrastructure: if it is unreachable, refusing
+        requests would turn an infrastructure outage into a lock-out of every
+        user, so the control is skipped instead — but never silently, see
+        :meth:`_report_cache_failure`.
+        """
+        try:
+            return operation(*args)
+        except Exception:
+            self._report_cache_failure()
+            return None
+
+    def _incr(self, key):
+        """Atomic increment that leaves the window TTL untouched."""
+        try:
+            return self._cache.incr(key)
+        except ValueError:
+            return None  # key expired between create() and increment()
+        except Exception:
+            self._report_cache_failure()
+            return None
+
+    # -- accounting -------------------------------------------------------
+    def record_failure(self, email):
+        """Count one failed credential check and return the new count."""
+        window = self.window_seconds()
+        ident = self.account_ident(email)
+        count_key = self._count_key(ident)
+
+        if self._call(self._cache.add, count_key, 1, window):
+            # First failure of the window: it starts the count and publishes a
+            # fixed expiry, so the remaining block time can be reported later
+            # without re-arming the TTL on every subsequent failure.
+            self._call(
+                self._cache.add, self._until_key(ident), time.time() + window, window
+            )
+            return 1
+
+        # Only increment: the window must stay the one the first failure
+        # started, otherwise a sustained attack could hold an account blocked
+        # for as long as it kept hammering.
+        count = self._incr(count_key)
+        if count is None:
+            self._call(self._cache.set, count_key, 1, window)
+            return 1
+        if count == self.failure_limit():
+            # One line per account per window: enough to see an attack without
+            # turning every refused attempt into log volume. No address, no
+            # credential, just the keyed identifier.
+            logger.warning(
+                "Login failure budget exhausted: account=%s failures=%d window=%ss",
+                ident[:12],
+                count,
+                window,
+            )
+        return count
+
+    def record_success(self, email):
+        """Clear the failure state: a successful login always starts clean."""
+        ident = self.account_ident(email)
+        self._call(self._cache.delete, self._count_key(ident))
+        self._call(self._cache.delete, self._until_key(ident))
+
+    def blocked_seconds(self, email):
+        """Seconds during which credential checking stays refused (0 = allowed).
+
+        Rounded up: the value is published to clients as ``Retry-After``, and a
+        client that waits exactly as long as it was told must find the block over.
+        """
+        ident = self.account_ident(email)
+        count = self._call(self._cache.get, self._count_key(ident))
+        if not isinstance(count, int) or count < self.failure_limit():
+            return 0
+        until = self._call(self._cache.get, self._until_key(ident))
+        if not isinstance(until, (int, float)):
+            return self.window_seconds()  # conservative fallback
+        return max(0, math.ceil(until - time.time()))
+
+    def is_blocked(self, email):
+        return self.blocked_seconds(email) > 0
+
+    def failure_limit(self):
+        return int(auth_throttle_settings().get("LOGIN_ACCOUNT_FAILURE_LIMIT", 5))
+
+    def window_seconds(self):
+        return int(
+            auth_throttle_settings().get("LOGIN_ACCOUNT_WINDOW_SECONDS", 15 * 60)
+        )
 
 
 class AuthService:
@@ -63,15 +225,21 @@ class AuthService:
     def login(self, email, password, remember_me=False):
         from django.conf import settings
 
+        attempts = LoginAttemptService()
+
         try:
             user = User.objects.get(email=email)
         except User.DoesNotExist:
+            # Counted exactly like a wrong password: the throttle must not
+            # become an oracle for which addresses exist (AUD-014).
+            attempts.record_failure(email)
             return None, "Invalid email or password."
 
         if user.status == User.Status.DISABLED:
             return None, "Account has been disabled. Contact your administrator."
 
         if not user.check_password(password):
+            attempts.record_failure(email)
             return None, "Invalid email or password."
 
         memberships = list(
@@ -103,6 +271,10 @@ class AuthService:
             m = memberships[0]
             active_tenant = {"id": str(m.tenant.id), "name": m.tenant.name, "role": m.role}
             refresh["tenant_id"] = str(m.tenant.id)
+
+        # Reaching this point proves the password, so any earlier attack on the
+        # account is forgiven immediately (AUD-014).
+        attempts.record_success(email)
 
         return {
             "access": str(refresh.access_token),

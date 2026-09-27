@@ -114,6 +114,48 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "rest_framework.views.exception_handler",
 }
 
+# ---------------------------------------------------------------------------
+# Authentication throttling (AUD-014)
+# ---------------------------------------------------------------------------
+# The global DRF throttles above are deliberately blunt (anon 20/hour, user
+# 100/hour): they bound total API abuse but know nothing about authentication,
+# so they rate-limit successful logins and long-lived sessions instead of
+# failed credential checks. These named limits are attached per endpoint by
+# apps.accounts.throttling and are the authentication-specific control.
+#
+# Every value is a safe default chosen for the current deployment; none is a
+# secret, so none is environment-driven (see docs/audits/
+# AUD-014-implementation-report.md for the rationale behind each number).
+AUTH_THROTTLE = {
+    # Master switch for the endpoint throttles. Test settings turn it off so
+    # unrelated authentication tests keep their existing behaviour; the
+    # dedicated throttling tests re-enable it with override_settings.
+    "ENABLED": True,
+    # POST /auth/login/ — ceiling on credential checks per client address, so
+    # one automated client cannot force unbounded password hashing. Counts
+    # successes and failures alike; it is a resource brake, not the
+    # brute-force brake (the account budget below is).
+    "LOGIN_IP_RATE": "20/min",
+    # POST /auth/login/ — failed-credential budget per normalised account.
+    # Five wrong passwords in fifteen minutes stops further password checks
+    # for that address only; the window is started by the first failure and is
+    # never extended, so the block is bounded in time, and a successful login
+    # clears it immediately.
+    "LOGIN_ACCOUNT_FAILURE_LIMIT": 5,
+    "LOGIN_ACCOUNT_WINDOW_SECONDS": 15 * 60,
+    # POST /auth/refresh/ — per client address and per refresh-token subject.
+    # Access tokens live 24h and the frontend refreshes single-flight, so these
+    # ceilings sit far above legitimate use while still bounding the
+    # blacklisted-token writes and token churn a stolen token could cause.
+    "REFRESH_IP_RATE": "30/min",
+    "REFRESH_SESSION_RATE": "10/min",
+    # X-Forwarded-For is client-controlled unless a trusted proxy overwrites
+    # it, so it is only honoured where the deployment says so. Production
+    # enables it because the web service is only reachable through an edge
+    # proxy that sets the header.
+    "TRUST_X_FORWARDED_FOR": False,
+}
+
 from datetime import timedelta
 
 SIMPLE_JWT = {

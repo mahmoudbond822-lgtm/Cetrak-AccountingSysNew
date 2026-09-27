@@ -36,17 +36,49 @@ export function csrfToken() {
 
 let refreshPromise = null
 
+// A throttled refresh (HTTP 429) is a transient condition, not a dead session.
+// Retry it once after the server's own Retry-After hint, capped so a bad value
+// can never park the request.
+const REFRESH_RETRY_MAX_WAIT_SECONDS = 10
+
+function retryAfterSeconds(error) {
+  const header = error.response?.headers?.['retry-after']
+  if (!header) return 0
+  const seconds = Number.parseInt(header, 10)
+  if (!Number.isFinite(seconds) || seconds <= 0) return 0
+  return Math.min(seconds, REFRESH_RETRY_MAX_WAIT_SECONDS)
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function requestRefresh() {
+  const csrf = csrfToken()
+  const { data } = await axios.post(
+    `${api.defaults.baseURL}/auth/refresh/`,
+    {},
+    { withCredentials: true, headers: csrf ? { 'X-CSRFToken': csrf } : {} },
+  )
+  return data.access
+}
+
 async function refreshAccessToken() {
   if (!refreshPromise) {
     refreshPromise = (async () => {
-      const csrf = csrfToken()
-      const { data } = await axios.post(
-        `${api.defaults.baseURL}/auth/refresh/`,
-        {},
-        { withCredentials: true, headers: csrf ? { 'X-CSRFToken': csrf } : {} },
-      )
-      localStorage.setItem('accessToken', data.access)
-      return data.access
+      let access
+      try {
+        access = await requestRefresh()
+      } catch (error) {
+        // Still single-flight: the retry happens inside the same shared promise,
+        // so concurrent 401s cannot fan out into several refresh calls.
+        const wait = retryAfterSeconds(error)
+        if (!wait) throw error
+        await sleep(wait * 1000)
+        access = await requestRefresh()
+      }
+      localStorage.setItem('accessToken', access)
+      return access
     })().finally(() => {
       refreshPromise = null
     })
