@@ -494,25 +494,39 @@ class ThrottleKeyTests(SimpleTestCase):
 
 
 @contextmanager
-def production_settings(**extra_env):
-    """Import ``config.settings.prod`` with a complete, throwaway environment."""
+def production_settings(redis_url=None, **extra_env):
+    """Import ``config.settings.prod`` with a complete, throwaway environment.
+
+    Every variable ``prod`` reads for the assertions below is pinned here rather
+    than inherited, so the result cannot depend on what happens to be exported in
+    the developer's shell — ``REDIS_URL`` in particular is always set explicitly
+    (or explicitly absent), since the documented local ``.env`` exports one.
+    """
     env = {
         "DJANGO_SECRET_KEY": "prod-test-secret-key",
         "DATABASE_URL": "sqlite:///:memory:",
+        "DJANGO_ALLOWED_HOSTS": "example.com",
+        "DJANGO_CSP_CONNECT_SRC": "",
         "CORS_ALLOWED_ORIGINS": "https://example.com",
         "CSRF_TRUSTED_ORIGINS": "https://example.com",
         "EMAIL_BACKEND": "django.core.mail.backends.smtp.EmailBackend",
         "EMAIL_HOST": "smtp.example.com",
         "EMAIL_HOST_USER": "apikey",
         "EMAIL_HOST_PASSWORD": "supersecretvalue",
+        "EMAIL_USE_TLS": "false",
+        "EMAIL_USE_SSL": "false",
         "DEFAULT_FROM_EMAIL": "Cetrak <noreply@example.com>",
         "FRONTEND_URL": "https://app.example.com",
         **extra_env,
     }
+    if redis_url is not None:
+        env["REDIS_URL"] = redis_url
     names = ("config.settings.base", "config.settings.prod")
     previous_modules = {name: sys.modules.pop(name, None) for name in names}
-    previous_env = {key: os.environ.get(key) for key in env}
+    previous_env = {key: os.environ.get(key) for key in set(env) | {"REDIS_URL"}}
     os.environ.update(env)
+    if redis_url is None:
+        os.environ.pop("REDIS_URL", None)
     try:
         yield importlib.import_module("config.settings.prod")
     finally:
@@ -532,11 +546,12 @@ class ProductionThrottleSettingsTests(SimpleTestCase):
     """AUD-014: production must not run per-process throttle counters silently."""
 
     def test_shared_cache_is_used_when_redis_url_is_configured(self):
-        with production_settings(REDIS_URL="redis://cache.internal:6379/1") as prod:
+        url = "redis://cache.internal:6379/1"
+        with production_settings(redis_url=url) as prod:
             assert prod.CACHES["default"]["BACKEND"] == (
                 "django.core.cache.backends.redis.RedisCache"
             )
-            assert prod.CACHES["default"]["LOCATION"] == "redis://cache.internal:6379/1"
+            assert prod.CACHES["default"]["LOCATION"] == url
 
     def test_missing_redis_url_warns_loudly_instead_of_failing_boots(self):
         with self.assertLogs("cetrak.security", level="WARNING") as logs:

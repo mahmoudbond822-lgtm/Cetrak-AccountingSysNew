@@ -217,23 +217,42 @@ create-only, `incr` is atomic, and **`incr` does not re-arm the TTL**, verified
 behaviourally (a 2-second key incremented half way through its life is gone
 afterwards). The file deliberately never calls `cache.clear()`, because on Redis
 that is a `FLUSHDB` of the whole cache database and these tests run against a
-developer's own Redis. **Not run here: no Redis is reachable on this machine
-(`Test-NetConnection localhost:6379` → False), so these 4 remain skipped.**
+developer's own Redis.
+
+**These 4 were run and pass** against a real `redis:7-alpine` (the same image the
+compose stack uses) with `CETRAK_REDIS_INTEGRATION=1 REDIS_URL=redis://localhost:6379/1`:
+
+```
+test_add_is_create_only_and_increment_is_atomic          PASSED
+test_increment_does_not_extend_the_window                 PASSED
+test_login_budget_behaves_the_same_on_redis               PASSED
+test_the_override_really_points_at_a_redis_client         PASSED
+4 passed
+```
+
+Running them was not a formality — it caught two defects that the LocMem suite
+could not see (§15.6, §15.7). Without the flag the file skips, so the normal suite
+is unaffected.
 
 ## 13. Regression results
 
 | Gate | Result |
 | --- | --- |
-| New throttling tests | **34 passed, 4 skipped** (skips = the opt-in Redis file) |
-| `apps/accounts` | **143 passed, 4 skipped** |
+| New throttling tests (default config) | **34 passed, 4 skipped** (skips = the opt-in Redis file) |
+| New throttling tests (`CETRAK_REDIS_INTEGRATION=1`, live Redis) | **34 passed** |
+| Opt-in Redis tests against real `redis:7-alpine` | **4 passed** |
+| `apps/accounts` (default config) | **143 passed, 4 skipped** |
+| `apps/accounts` (integration flag on) | **147 passed, 0 skipped** |
 | Full backend suite | **572 passed, 6 skipped, 16 subtests passed** (baseline 538 + 34) |
 | `makemigrations --check --dry-run` | No changes detected |
 | `npm run build` | clean — 157 modules, 444.15 kB JS / 123.75 kB gzip, 11.67 kB CSS |
 | `npm run lint` | 13 problems (12 errors, 1 warning) — identical to the locked baseline, zero new |
 | `git diff --check` | clean |
 
-Skips: 1 pre-existing + 1 opt-in Celery broker round-trip + the 4 opt-in Redis
-tests. The two pre-existing baseline skips are unchanged.
+Skips (default config): 1 pre-existing + 1 opt-in Celery broker round-trip + the
+4 opt-in Redis tests. The two pre-existing baseline skips are unchanged. With
+`CETRAK_REDIS_INTEGRATION=1` the Redis skips disappear (147 passed, 0 skipped in
+`apps/accounts`) and nothing else changes.
 
 ## 14. Migration verification
 
@@ -262,6 +281,21 @@ Recorded because each was found by a test, not by review:
 5. **Flaky window test.** A 1-second window expired while two bcrypt
    verifications were still running. The test now sleeps exactly the window the
    lock-out published, so it cannot be flaky on a slow machine.
+6. **The Redis backend assertion was wrong** (found by the real-Redis run).
+   `django.core.cache.cache` is a `ConnectionProxy`, so its module is
+   `django.utils.connection`, not the backend's. The test now asserts the
+   configured `BACKEND` path *and* the module of the client behind the proxy —
+   which is what actually distinguishes a shared Redis from a LocMem cache.
+7. **The production-settings helper leaked the ambient environment** (found by
+   the real-Redis run, in the *hermetic* test). `production_settings()` saved and
+   restored only the variables it set, so an exported `REDIS_URL` — which the
+   documented local `.env` sets — reached `config.settings.prod` and
+   `test_missing_redis_url_warns_loudly_instead_of_failing_boots` failed on any
+   developer machine that had Redis configured. `REDIS_URL` is now controlled
+   explicitly (set or explicitly absent), the other `prod`-relevant variables are
+   pinned, and the file is verified green both with and without `REDIS_URL`
+   exported. Worth noting: this defect could only ever have been caught by running
+   the opt-in configuration, which is the argument for keeping it runnable.
 
 ## 16. Security review
 
@@ -284,11 +318,12 @@ Recorded because each was found by a test, not by review:
    returns 429 twice is treated like any other failed refresh (session cleared,
    redirect to `/login`). Changing that would alter the session contract, which is
    out of scope here; the retry makes the transient case transparent.
-2. **Redis behaviour is unverified on this machine.** The TTL-preservation
-   property that the bounded lock-out rests on is proven against LocMem and
-   asserted structurally for Redis, but the 4 opt-in tests were skipped (no local
-   Redis). Run them with `CETRAK_REDIS_INTEGRATION=1` against a real instance
-   before relying on a multi-worker deployment.
+2. **Multi-worker sharing is verified only at the cache layer.** The 4 opt-in
+   tests now pass against a real Redis, so the property the bounded lock-out
+   rests on — `incr` preserving the window TTL — is proven for the cache backend
+   production uses. What is *not* exercised is several gunicorn workers hitting
+   that Redis at once; the guarantee is structural (shared cache, no per-process
+   state), so this is a deployment smoke test, not a code gap.
 3. **`render.yaml` was not changed**, so a deployment without `REDIS_URL` boots
    with process-local counters and a loud warning. Adding the variable is a
    deployment change and deliberately left to the operator.
@@ -311,14 +346,17 @@ Recorded because each was found by a test, not by review:
 | `backend/config/settings/base.py` | `AUTH_THROTTLE` block |
 | `backend/config/settings/prod.py` | Redis cache when `REDIS_URL` is set, else loud LocMem fallback; trust the edge proxy |
 | `backend/config/settings/test.py` | throttles off, LocMemCache pinned |
-| `backend/apps/accounts/tests/test_auth_throttling.py` | new — 34 tests |
+| `backend/apps/accounts/tests/test_auth_throttling.py` | new — 34 tests (2 corrected after the live Redis run, §15.6–7) |
 | `backend/apps/accounts/tests/test_auth_throttle_cache_integration.py` | new — 4 opt-in Redis tests |
 | `backend/.env.example` | documents `REDIS_URL`'s production role and the Redis integration flag |
 | `frontend/src/services/api.js` | bounded `Retry-After` retry for a throttled refresh |
 
 ## 19. Commit and final status
 
-* Commit: `feat(auth): add login and refresh throttling`
-* **AUD-014: CLOSED**, subject to the one open item in §17.2 (run the opt-in Redis
-  tests in a multi-worker deployment) and the operator action in §17.3 (set
-  `REDIS_URL`). No push and no deployment is performed by this work.
+* Commits: `3cba284 feat(auth): add login and refresh throttling`, followed by
+  `test(auth): fix two AUD-014 test defects found by the live Redis run` (§15.6,
+  §15.7 — both in tests, neither in shipped behaviour).
+* **AUD-014: CLOSED.** No functional open items: the one remaining operator action
+  is setting `REDIS_URL` in the deployed environment (§17.3), and §17.2 is a
+  multi-worker deployment smoke test rather than a code gap. No push and no
+  deployment is performed by this work.

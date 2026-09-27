@@ -17,6 +17,7 @@ import time
 import uuid
 
 import pytest
+from django.conf import settings
 from django.core.cache import cache
 from django.test import SimpleTestCase, override_settings
 
@@ -41,8 +42,14 @@ class RedisThrottleStateTests(SimpleTestCase):
     cache database, and these tests are pointed at a developer's own Redis.
     Every key written here is unique to the test, so it expires on its own."""
 
-    def test_backend_is_redis(self):
-        assert "redis" in cache.__class__.__module__
+    def test_the_override_really_points_at_a_redis_client(self):
+        # ``cache`` is a ConnectionProxy, so check the configured backend and the
+        # client behind it. A LocMem cache would pass the behavioural tests below
+        # while proving nothing about production, so this is asserted explicitly.
+        assert settings.CACHES["default"]["BACKEND"] == (
+            "django.core.cache.backends.redis.RedisCache"
+        )
+        assert "redis" in type(cache._cache).__module__
 
     def test_add_is_create_only_and_increment_is_atomic(self):
         key = f"audit014:probe:{uuid.uuid4()}"
