@@ -55,8 +55,13 @@ def _load_prod(monkeypatch, env_values):
             monkeypatch.setattr(base, name, env_values[name])
     for key, value in env_values.items():
         monkeypatch.setenv(key, value)
+    # Drop the variables prod.py *branches* on, so a developer's ambient
+    # environment cannot decide the outcome. `REDIS_URL` belongs here for the
+    # same reason as EMAIL_*: the opt-in Redis runs set it, and a leaked value
+    # would silently turn the "no REDIS_URL" case into the configured one.
     for key in list(os.environ):
-        if (key.startswith("EMAIL_") or key in ("FRONTEND_URL", "DEFAULT_FROM_EMAIL")) \
+        if (key.startswith("EMAIL_")
+                or key in ("FRONTEND_URL", "DEFAULT_FROM_EMAIL", "REDIS_URL")) \
                 and key not in env_values:
             monkeypatch.delenv(key, raising=False)
     # prod's `INSTALLED_APPS += [...]` mutates the shared base list in place;
