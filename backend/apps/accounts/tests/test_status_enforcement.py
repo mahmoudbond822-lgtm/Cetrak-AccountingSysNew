@@ -1,10 +1,16 @@
 from rest_framework import status
-from rest_framework.test import APITestCase
+from rest_framework.test import APIClient, APITestCase
 from django.urls import reverse
 
 from apps.core.models import Tenant
+from apps.core.services import TenantDecommissionService
 from apps.accounts.models import User, Membership
-from apps.accounts.tests.helpers import post_refresh
+from apps.accounts.tests.helpers import (
+    login,
+    post_refresh,
+    refresh_cookie_value,
+    tenant_id_of,
+)
 
 
 class BaseStatusSetup(APITestCase):
@@ -134,3 +140,78 @@ class TenantStatusEnforcementTests(BaseStatusSetup):
         )
         assert response.status_code == status.HTTP_200_OK
         assert response.data["tenant"]["id"] == str(self.tenant_a.id)
+
+
+class TenantBoundRefreshAfterStatusChangeTests(APITestCase):
+    """AUD-012: a token bound to a retired tenant must stop minting tokens.
+
+    A single-membership login issues a refresh token carrying ``tenant_id``. Data
+    access was already denied for a non-``ACTIVE`` tenant by
+    ``TenantScopedPermission``, but without a check here the token could keep
+    rotating forever, which left the lock-out incomplete and burned a blacklisted
+    row on every rotation.
+    """
+
+    def setUp(self):
+        self.tenant = Tenant.objects.create(name="Retiring Corp")
+        self.admin = User.objects.create_user(
+            email="admin@example.com", password="SecurePass123"
+        )
+        Membership.objects.create(
+            user=self.admin, tenant=self.tenant, role=Membership.Role.ADMIN
+        )
+        login_resp = login(self.client, "admin@example.com", "SecurePass123")
+        self.refresh_cookie = refresh_cookie_value(self.client)
+        assert tenant_id_of(self.refresh_cookie) == str(self.tenant.id)
+
+    def test_it_mints_nothing_for_a_suspended_tenant(self):
+        self.tenant.status = Tenant.Status.SUSPENDED
+        self.tenant.save(update_fields=["status"])
+
+        response = post_refresh(self.client)
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.data["detail"] == "This session's organization is no longer active."
+
+    def test_it_mints_nothing_after_a_decommission(self):
+        TenantDecommissionService.decommission(
+            tenant=self.tenant,
+            actor=self.admin,
+            reason="Contract ended.",
+        )
+
+        response = post_refresh(self.client)
+
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert "access" not in response.data
+
+    def test_the_denial_is_repeatable(self):
+        """A refused rotation must not burn the token into a confusing state."""
+        self.tenant.status = Tenant.Status.SUSPENDED
+        self.tenant.save(update_fields=["status"])
+
+        first = post_refresh(self.client)
+        second = post_refresh(self.client)
+
+        assert first.status_code == second.status_code == status.HTTP_403_FORBIDDEN
+
+    def test_an_active_tenant_still_refreshes(self):
+        response = post_refresh(self.client)
+
+        assert response.status_code == status.HTTP_200_OK
+        assert "access" in response.data
+        assert tenant_id_of(response.data["access"]) == str(self.tenant.id)
+
+    def test_an_unbound_refresh_is_unaffected(self):
+        """Multi-tenant logins carry no ``tenant_id``; there is nothing to judge."""
+        multi = Tenant.objects.create(name="Second Corp")
+        Membership.objects.create(
+            user=self.admin, tenant=multi, role=Membership.Role.ADMIN
+        )
+        fresh = APIClient()
+        login(fresh, "admin@example.com", "SecurePass123")
+        assert tenant_id_of(refresh_cookie_value(fresh)) is None
+
+        response = post_refresh(fresh)
+
+        assert response.status_code == status.HTTP_200_OK

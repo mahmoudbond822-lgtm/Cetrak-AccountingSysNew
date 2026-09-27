@@ -23,7 +23,7 @@ class TenantScopedModel(BaseModel):
 
     tenant = models.ForeignKey(
         "core.Tenant",
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
     )
 
     class Meta:
@@ -45,7 +45,7 @@ class TenantOwnedLineModel(BaseModel):
 
     tenant = models.ForeignKey(
         "core.Tenant",
-        on_delete=models.CASCADE,
+        on_delete=models.PROTECT,
         related_name="+",
     )
 
@@ -89,7 +89,26 @@ class TenantOwnedLineModel(BaseModel):
             )
 
 
+class TenantQuerySet(models.QuerySet):
+    def delete(self, *args, **kwargs):
+        raise TypeError(
+            "Tenants are never deleted: their accounting, inventory and audit "
+            "history is permanent. Use "
+            "apps.core.services.TenantDecommissionService."
+        )
+
+
 class Tenant(BaseModel):
+    """A customer organisation, and the root of every tenant-owned row (AUD-012).
+
+    A tenant is never deleted. ``on_delete=PROTECT`` on every tenant foreign key
+    means the database refuses to take the history with it, and the model-level
+    guards here stop the ORM paths that would not consult that. Retiring a
+    tenant is a deliberate, recorded act instead:
+    ``TenantDecommissionService`` freezes it (``status`` → ``CANCELLED``) and
+    stamps who decommissioned it, when, and why.
+    """
+
     class Status(models.TextChoices):
         ACTIVE = "Active", "Active"
         SUSPENDED = "Suspended", "Suspended"
@@ -101,6 +120,18 @@ class Tenant(BaseModel):
         choices=Status.choices,
         default=Status.ACTIVE,
     )
+    #: Set once, by the decommission service, and never cleared.
+    decommissioned_at = models.DateTimeField(null=True, blank=True)
+    decommissioned_by = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    decommission_reason = models.TextField(blank=True, default="")
+
+    objects = TenantQuerySet.as_manager()
 
     class Meta:
         db_table = "core_tenant"
@@ -109,6 +140,17 @@ class Tenant(BaseModel):
 
     def __str__(self):
         return self.name
+
+    @property
+    def is_decommissioned(self):
+        return self.decommissioned_at is not None
+
+    def delete(self, *args, **kwargs):
+        raise TypeError(
+            "Tenants are never deleted: their accounting, inventory and audit "
+            "history is permanent. Use "
+            "apps.core.services.TenantDecommissionService."
+        )
 
 
 class AuditLogQuerySet(models.QuerySet):

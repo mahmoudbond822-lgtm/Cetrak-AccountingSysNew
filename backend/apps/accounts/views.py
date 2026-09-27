@@ -248,6 +248,20 @@ def refresh_view(request):
             except User.DoesNotExist:
                 raise Exception("User not found")
 
+        # AUD-012: a token minted for a tenant that is no longer ACTIVE must stop
+        # minting. Without this a decommissioned (or merely suspended) tenant's
+        # sessions rotate indefinitely — harmless for data access, which
+        # ``TenantScopedPermission`` already denies, but it keeps the lock-out of
+        # the tenant incomplete and burns a blacklisted-token row per rotation.
+        tenant_id = old_refresh.get("tenant_id")
+        if tenant_id and not Tenant.objects.filter(
+            id=tenant_id, status=Tenant.Status.ACTIVE
+        ).exists():
+            return Response(
+                {"detail": "This session's organization is no longer active."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         _blacklist(old_refresh)
 
         new_refresh = _mint_refresh(

@@ -63,7 +63,15 @@ class Membership(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="memberships")
-    tenant = models.ForeignKey("core.Tenant", on_delete=models.CASCADE, related_name="memberships", db_index=True)
+    # PROTECT (AUD-012): the membership record is part of the evidence trail for
+    # a tenant, so it dies with the *user*, never with the tenant. Losing a tenant
+    # must never silently erase who had access to what.
+    tenant = models.ForeignKey(
+        "core.Tenant",
+        on_delete=models.PROTECT,
+        related_name="memberships",
+        db_index=True,
+    )
     role = models.CharField(
         max_length=20,
         choices=Role.choices,
