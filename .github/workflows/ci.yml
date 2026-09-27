@@ -1,0 +1,129 @@
+# Continuous integration.
+#
+# PostgreSQL is the default test database, and SQLite is a second job rather
+# than a fallback. The reason is concrete: some shipped behaviour only exists
+# on PostgreSQL. apps/accounting/migrations/0005 installs an exact-balance
+# CHECK constraint through a RunPython migration that is a deliberate no-op on
+# SQLite, so a SQLite-only suite reports success while never executing it. Both
+# jobs therefore declare their backend with CETRAK_TEST_DB, and config.settings.
+# test refuses to fall back from postgres to sqlite, so a mistyped environment
+# fails the build instead of quietly moving it to the weaker database.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# A new push to the same branch supersedes an in-flight run, but only when the
+# superseding run is for the same event; this is the documented cancellation
+# pattern, and its absence is what accumulates wasted runners.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The default gate. PostgreSQL 15, matching the version in
+  # infra/docker-compose.yml and the version every manual verification ran
+  # against, so a failure here is reproducible on a laptop with the same image.
+  test-postgres:
+    name: backend tests (PostgreSQL 15)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: cetrak
+          POSTGRES_USER: cetrak
+          POSTGRES_PASSWORD: cetrak
+        ports:
+          - 5432:5432
+        # The entrypoint initialises the cluster before accepting connections,
+        # so the job must not start until pg_isready agrees.
+        options: >-
+          --health-cmd "pg_isready -U cetrak -d cetrak"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.test
+      CETRAK_TEST_DB: postgres
+      POSTGRES_DB: cetrak
+      POSTGRES_USER: cetrak
+      POSTGRES_PASSWORD: cetrak
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5432"
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # backend/runtime.txt is the deployed runtime; CI must not drift from it.
+          python-version: "3.11.9"
+          cache: pip
+          cache-dependency-path: backend/requirements/*.txt
+
+      - name: Install test dependencies
+        run: pip install -r requirements/dev.txt
+
+      - name: Report the resolved test database
+        run: |
+          python -c "from django.conf import settings; print('engine:', settings.DATABASES['default']['ENGINE']); print('name  :', settings.DATABASES['default']['NAME'])"
+
+      # Unapplied model changes must never reach the suite. This has to run on
+      # PostgreSQL: a migration can be engine-specific, so checking it on the
+      # wrong backend would not answer the question.
+      - name: Check for unmade migrations
+        run: python manage.py makemigrations --check --dry-run
+
+      # The test database is created by pytest-django, which runs the migrations
+      # itself. This step exists to prove the migration path independently, from
+      # an empty cluster, and to prove it is idempotent — pytest would create a
+      # separate test_cetrak database and would not exercise either property.
+      - name: Migrate an empty database
+        run: python manage.py migrate --noinput
+
+      - name: Migrate again (idempotency)
+        run: python manage.py migrate --noinput
+
+      - name: Run the suite
+        run: python -m pytest apps/ -q
+
+  # The fast gate. Kept because in-memory SQLite is the right engine for a tight
+  # edit/run loop, and because a database-portable regression should be caught
+  # by the cheapest job available. It is not allowed to stand in for the
+  # PostgreSQL job: CETRAK_TEST_DB=sqlite is declared, so this job stays on
+  # SQLite even if the runner ever provides PostgreSQL variables.
+  test-sqlite:
+    name: backend tests (SQLite)
+    runs-on: ubuntu-latest
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.test
+      CETRAK_TEST_DB: sqlite
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11.9"
+          cache: pip
+          cache-dependency-path: backend/requirements/*.txt
+
+      - name: Install test dependencies
+        run: pip install -r requirements/dev.txt
+
+      - name: Report the resolved test database
+        run: |
+          python -c "from django.conf import settings; print('engine:', settings.DATABASES['default']['ENGINE']); print('name  :', settings.DATABASES['default']['NAME'])"
+
+      - name: Check for unmade migrations
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Run the suite
+        run: python -m pytest apps/ -q
