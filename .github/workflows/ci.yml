@@ -61,16 +61,25 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          # .python-version at the repo root is the single source of truth for the
-          # Python version, and is the same file Render reads for the deploy. It
-          # replaces backend/runtime.txt, which pinned 3.11.9 and so could never
-          # satisfy django>=6.0 (every Django 6.0.x requires Python >=3.12).
-          python-version-file: .python-version
+          # backend/.python-version is the single source of truth for the Python
+          # version, shared with the deploy. It lives in backend/ rather than the
+          # repo root because both Render Python services set rootDir: backend,
+          # and files outside the root directory are not available at build time.
+          # It replaces backend/runtime.txt, which pinned 3.11.9 and so could
+          # never satisfy django>=6.0 (every Django 6.0.x requires Python >=3.12).
+          # A `uses:` step resolves this path from the workspace root, not from
+          # the `working-directory: backend` used by the run steps.
+          python-version-file: backend/.python-version
           cache: pip
           cache-dependency-path: backend/requirements/*.txt
 
+      # dev.txt alone cannot run the suite: config.settings.prod imports
+      # dj_database_url at module scope, and 20 tests import that module to
+      # assert production-settings behaviour. dj-database-url is declared only
+      # in prod.txt, so installing dev.txt alone fails those 20 tests at import.
+      # Installing both reproduces the dependency set a deployed service has.
       - name: Install test dependencies
-        run: pip install -r requirements/dev.txt
+        run: pip install -r requirements/dev.txt -r requirements/prod.txt
 
       - name: Report the resolved test database
         run: |
@@ -93,7 +102,7 @@ jobs:
         run: python manage.py migrate --noinput
 
       - name: Run the suite
-        run: python -m pytest apps/ -q
+        run: python -m pytest apps/ -q -rs
 
   # The fast gate. Kept because in-memory SQLite is the right engine for a tight
   # edit/run loop, and because a database-portable regression should be caught
@@ -114,12 +123,13 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version-file: .python-version
+          python-version-file: backend/.python-version
           cache: pip
           cache-dependency-path: backend/requirements/*.txt
 
+      # See the note in test-postgres: dev.txt alone fails 20 tests at import.
       - name: Install test dependencies
-        run: pip install -r requirements/dev.txt
+        run: pip install -r requirements/dev.txt -r requirements/prod.txt
 
       - name: Report the resolved test database
         run: |
@@ -129,4 +139,4 @@ jobs:
         run: python manage.py makemigrations --check --dry-run
 
       - name: Run the suite
-        run: python -m pytest apps/ -q
+        run: python -m pytest apps/ -q -rs
