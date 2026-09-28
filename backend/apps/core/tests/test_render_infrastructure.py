@@ -53,8 +53,9 @@ def manifest():
 def schema():
     """Render's own blueprint schema, or skip if it cannot be fetched.
 
-    ``jsonschema`` is not a test dependency: the field-level assertions below are
-    the real net, and this only catches a key Render does not publish.
+    ``jsonschema`` is a declared test dependency (requirements/dev.txt); the
+    schema itself is fetched from Render at run time, so this fixture only
+    skips when the network fetch fails, e.g. when running offline.
     """
     jsonschema = pytest.importorskip("jsonschema")
     cached = getattr(TestRenderManifest, "_schema_cache", None)

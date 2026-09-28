@@ -3,3 +3,6 @@ pytest>=8.0,<9.0
 pytest-django>=4.8,<5.0
 # Read by apps/core/tests/test_render_infrastructure.py to assert the deploy manifest.
 PyYAML>=6.0,<7.0
+# test_render_infrastructure.py validates render.yaml against Render's published
+# JSON schema with jsonschema; without it that test always skipped in CI.
+jsonschema>=4.26,<5.0
