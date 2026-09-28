@@ -214,3 +214,92 @@ PostgreSQL-only row-lock test, which skips on SQLite.
 * No frontend job was added. The scope of this change is the test database, and
   `npm run build` / `npm run lint` remain manual. Worth a follow-up, not worth
   mixing into this commit.
+
+## First GitHub Actions run
+
+The workflow was pushed to a throwaway branch (`ci/first-run-verification`, at
+`4eaf50b`) to exercise it on a real runner without touching `main`. It ran, and
+it is **red**: both jobs fail during `pip install -r requirements/dev.txt`,
+before any Django code is imported.
+
+* Run: <https://github.com/mahmoudbond822-lgtm/Cetrak-AccountingSysNew/actions/runs/36458970580>
+  (run id `36458970580`, event `push`, head `4eaf50b5f8cfa4b5083bb7bc6503ff15505442ed`)
+
+| | `backend tests (PostgreSQL 15)` | `backend tests (SQLite)` |
+|---|---|---|
+| started | 17:33:36Z | 17:33:36Z |
+| completed | 17:34:02Z | 17:33:53Z |
+| wall clock | 26s | 17s |
+| runner | `ubuntu-latest` | `ubuntu-latest` |
+| conclusion | **failure** | **failure** |
+| failing step | 5 — Install test dependencies | 4 — Install test dependencies |
+
+Steps that completed before the failure, in both jobs: `actions/checkout@v4`
+and `actions/setup-python@v5` both succeeded, and the PostgreSQL job's
+`Initialize containers` step succeeded — so the `pg_isready` health check on
+`postgres:15-alpine` passed. `setup-python` also proves that **3.11.9 is
+available and installable on `ubuntu-latest`**: the version was requested and
+provisioned successfully. The requested version is therefore not the problem,
+and it does match `runtime.txt`.
+
+The pip cache was a **miss**, which is expected and correct for a first run
+there is no prior cache to restore. Because the job failed, the
+`setup-python` post step was skipped, so no cache was written either.
+
+Nothing downstream of the install ran, so this run produced **no** result for
+`makemigrations --check`, `migrate` from zero, `migrate` again, or the test
+counts. The 661/10 and 660/11 figures in the table above are still local-only
+measurements and remain unconfirmed on a runner.
+
+### Root cause
+
+`backend/requirements/base.txt` requires `django>=6.0,<6.1`, and **every**
+Django 6.0.x release declares `Requires-Python >=3.12` (PyPI metadata; the
+project currently runs Django 6.0.4 on Python 3.14.3 locally).
+`backend/runtime.txt` pins `python-3.11.9`, and both CI jobs request 3.11.9.
+pip therefore cannot resolve the requirement at all:
+
+```
+ERROR: Ignored the following versions that require a different python version:
+       6.0 Requires-Python >=3.12; 6.0.1 Requires-Python >=3.12; ...
+ERROR: Could not find a version that satisfies the requirement django<6.1,>=6.0
+ERROR: No matching distribution found for django<6.1,>=6.0
+```
+
+Reproduced locally with
+`pip install --dry-run --python-version 3.11 --only-binary=:all: -r requirements/dev.txt`,
+so the failure is deterministic and not a runner or network artifact.
+
+### Caveat status
+
+* **"The workflow has not run on GitHub Actions"** — **cleared, and answered in
+  the negative.** The previously unexercised mechanics are now exercised and all
+  of them work: checkout, `setup-python` 3.11.9 provisioning, the pip cache
+  lookup, and the `pg_isready` service health check. The workflow does trigger
+  and does start. What the run disproves is the *pass* expectation: it is red
+  for a reason that has nothing to do with the test database, and the
+  PostgreSQL/SQLite split remains unproven on a runner.
+* **"Python 3.11.9 was not available locally … a version-dependent install
+  failure would only surface on the first CI run"** — **still open, and it is
+  exactly what happened.** The predicted failure materialised on the first run
+  and it is not subtle: the dependency floor is Python 3.12, so 3.11.9 can
+  never install this project's requirements.
+* The wall-clock caveat cannot be revisited yet — the longest job ran 26
+  seconds, so there is still no full-run timing to compare against 25–30
+  minutes.
+
+### Why this was not fixed here
+
+Changing only `.github/workflows/ci.yml` to 3.12+ would turn CI green while
+`backend/runtime.txt` still pins 3.11.9 — and `runtime.txt` is what Render
+installs from, so the deployed build would fail at the same step. A green
+check would then be hiding a broken deploy. The real fix is a one-line change to
+`backend/runtime.txt` (raise the floor to 3.12+, keeping CI in step with it);
+lowering the Django floor instead would be an application change. Both are
+production-configuration edits and outside the scope of this verification, so
+the run is reported red and left unfixed for an explicit decision.
+
+### Fixes made
+
+None. No workflow or CI-plumbing change was warranted, so there is no commit to
+list beyond this documentation append.
