@@ -53,10 +53,11 @@ failure is reproducible locally with the same image. The job waits for
 `pg_isready` via the service health check before any step runs, because the
 entrypoint initialises the cluster before it accepts connections. It then:
 
-1. installs `requirements/dev.txt` on the Python version in the repo-root
-   `.python-version` — the single pin that CI and Render both read, so the two
-   cannot drift (it was `3.11.9` from `backend/runtime.txt` when this section
-   was first written; see "First GitHub Actions run" below)
+1. installs `requirements/dev.txt` and `requirements/prod.txt` together (see
+   "First GitHub Actions run" below for why both are needed) on the Python
+   version in `backend/.python-version` — the single pin that CI and Render
+   both read, so the two cannot drift (it was `3.11.9` from `backend/runtime.txt`
+   when this section was first written)
 2. prints the resolved engine, so the CI log records which database was used
 3. runs `makemigrations --check --dry-run` **against PostgreSQL** — a
    migration can be engine-specific, so checking it on the wrong backend does
@@ -64,7 +65,7 @@ entrypoint initialises the cluster before it accepts connections. It then:
 4. runs `migrate --noinput` against an **empty** database, then runs it again to
    prove idempotency. pytest-django would create a separate `test_cetrak` and
    would prove neither property
-5. runs `python -m pytest apps/ -q`
+5. runs `python -m pytest apps/ -q -rs`, so the log records every skip reason
 
 ### The `test-sqlite` job
 
@@ -220,9 +221,9 @@ PostgreSQL-only row-lock test, which skips on SQLite.
 ## First GitHub Actions run
 
 The workflow was pushed to a throwaway branch (`ci/first-run-verification`) to
-exercise it on a real runner without touching `main`. It took **three runs** to
-get past dependency installation, and the run after that exposed a defect that
-was never visible locally. All three are recorded here.
+exercise it on a real runner without touching `main`. It took **four runs**:
+three failures diagnosed two genuine defects, and the fourth is the first
+green execution of this workflow. All four are recorded below.
 
 ### Run 1 — red at install (`4eaf50b`)
 
@@ -341,66 +342,142 @@ environments built from `dev.txt` alone:
 
 Against the expected 660 passed / 11 skipped, 21 tests changed state: 20 now
 fail on the missing import, and one extra test skips. The totals line up
-(671 = 671), and the extra skip is not yet accounted for.
+(671 = 671); the extra skip turned out to be the `jsonschema` test — see the
+run-3 skip analysis below.
 
 CI's own counts could not be read verbatim — GitHub's log endpoint returns 403
 without an authenticated `gh`, and `gh` is not installed here — so the CI
 failure is attributed to this cause by reproduction on the exact pinned
 interpreter and dependency set rather than by reading the runner's output.
 
-This is a **dependency-declaration defect**, so it was not fixed: doing so means
-editing a requirements file, which is outside the approved scope. It needs an
-explicit decision.
+This is a **dependency-declaration defect**. It was fixed on the CI side
+(run 3) without editing a requirements file; the requirements themselves were
+left alone.
+
+### Run 3 — green (`c39a754`)
+
+* Commit `c39a754` — *ci: install prod deps and read Python pin from
+  backend/.python-version*. Two changes:
+  1. Both jobs now `pip install -r requirements/dev.txt -r requirements/prod.txt`.
+  2. `.python-version` moved to `backend/.python-version` and both jobs point at
+     it; the repo-root copy is gone.
+* Run: <https://github.com/mahmoudbond822-lgtm/Cetrak-AccountingSysNew/actions/runs/36467543567>
+  (run id `36467543567`, event `push`, head `c39a754`) — conclusion **success**,
+  both jobs.
+
+| step | `backend tests (PostgreSQL 15)` | `backend tests (SQLite)` |
+|---|---|---|
+| `actions/setup-python@v5` (`backend/.python-version`) | success | success |
+| Install test dependencies (dev + prod) | **success** | **success** |
+| Report the resolved test database | success | success |
+| `makemigrations --check --dry-run` | **success** | **success** |
+| `migrate` from an empty database | **success** | n/a |
+| `migrate` again (idempotency) | **success** | n/a |
+| Run the suite | **success** | **success** |
+| pip cache post-step | saved | saved |
+| wall clock | 557s | 476s |
+
+This is the workflow's first green run. The previously theoretical number of
+*"a full run is roughly 8–9 minutes"* now has a measurement: the run completed
+about 14 minutes wall-clock end to end, with the two jobs in parallel.
+
+### Run 3 counts and the skip analysis
+
+CI's own summary line cannot be read verbatim — GitHub's log download returns
+403 without an authenticated `gh`, and `gh` is not installed — so the counts
+below are from a faithful local reproduction on Python 3.13.13 in a clean
+environment built from `dev.txt` **and** `prod.txt` (the exact CI dependency
+set, version-for-version: Django 6.0.8, DRF 3.17.2, pytest 8.4.2), against
+PostgreSQL 15.18 (`postgres:15-alpine`, the CI image) and in-memory SQLite:
+
+| backend | local reproduction on 3.13.13 |
+|---|---|
+| PostgreSQL 15 | **660 passed, 11 skipped** |
+| SQLite | **659 passed, 12 skipped** |
+
+Every skip, with reason (`-rs` is now enabled in CI so the runner prints these
+too):
+
+| test | count | reason |
+|---|---|---|
+| `test_email_enqueue.py:159,:199` | 2 | `CETRAK_CELERY_INTEGRATION=1` opt-in (Redis broker) |
+| `test_auth_throttle_cache_integration.py:45,54,62,78` | 4 | `CETRAK_REDIS_INTEGRATION=1` opt-in |
+| `test_cache_health.py:116,122,125` | 3 | `CETRAK_REDIS_INTEGRATION=1` opt-in |
+| `test_celery_integration.py:31` | 1 | `CETRAK_CELERY_INTEGRATION=1` opt-in |
+| `test_render_infrastructure.py:86` | 1 | **`jsonschema` not installed** |
+| `test_sales_inventory_api.py:290` | 1 (SQLite only) | PostgreSQL-only row-lock test |
+
+**Deviation from the earlier baselines (661/10 PG, 660/11 SQLite):** both jobs
+show exactly one fewer passed and one more skipped, and the culprit is a second
+undeclared test dependency. `test_manifest_matches_the_published_render_schema`
+does `pytest.importorskip("jsonschema")`, and `jsonschema` is declared in **no**
+requirements file, so on CI it skips silently. It passed in the old local
+figures only because the developer's environment happened to have it. Notable
+footnote: that skipped test is the one that validates `render.yaml` against
+Render's published blueprint schema — CI has now never executed it. The
+previous "25 subtests" figure in the old baselines is likewise an artifact of
+the local environment (pytest-subtests is also undeclared); the CI install has
+no subtests plugin.
+
+`jsonschema` is a dependency-pin addition, so it stays unfixed and is listed
+under `Follow-ups`.
 
 ### Caveat status
 
-* **"The workflow has not run on GitHub Actions"** — **cleared.** Three runs
-  have now exercised every mechanism: checkout, `setup-python` (both a pinned
-  version and `python-version-file`), the pip cache lookup, the `pg_isready`
-  health check, the migration check, and a migrate-from-zero plus
-  migrate-again on a real PostgreSQL 15 service container. The workflow triggers
-  and runs correctly. It has never yet been *green*.
+* **"The workflow has not run on GitHub Actions"** — **cleared.** Four runs
+  have exercised every mechanism including the pip cache restore **and save**,
+  and the workflow is now **green**.
 * **"Python 3.11.9 was not available locally … a version-dependent install
-  failure would only surface on the first CI run"** — **cleared, and the
-  prediction was correct.** The failure materialised exactly as described, and
-  `73e388f` fixed it by moving the pin to 3.13 in one place.
-* Wall clock is now measurable for the first time: 503s and 423s per job,
-  running in parallel, so a full run is roughly 8–9 minutes — less than the
-  25–30 minutes estimated, though that estimate covered a cache-warm-up run and
-  neither job has had a cache hit yet.
+  failure would only surface on the first CI run"** — **cleared.** The
+  predicted failure materialised on run 1, and the pin was fixed in run 2.
+* Wall-clock caveat now resolved by measurement: two parallel jobs of 557s and
+  476s make a full run roughly 14 minutes end to end — well under the
+  original 25–30-minute estimate.
 
-### Production Python version — one file, two caveats
+### Production Python version — resolved and one person-check
 
-Production Python is now pinned by the same `.python-version` that CI reads.
-Two things must be confirmed by a person, because neither is visible from the
-repository:
+The rootDir worry is now fixed in the repository: `.python-version` lives in
+`backend/`, the directory Render builds from, so it is available at build time
+and is not affected by the ambiguity of where Render reads a repo-root file.
+Git removed the old root file with the move (`R .python-version ->
+backend/.python-version`, 100%), so there is no stale copy to confuse anything.
 
-* **If `PYTHON_VERSION` is set as an environment variable on the Render
-  services, it wins over `.python-version` and the pin is silently ignored.**
-  `render.yaml` does not set it — it is not present in any service or in the
-  `cetrak-runtime` env group — but env vars set directly in the Render
-  dashboard are not represented in the blueprint and cannot be checked from
-  here. This must be checked in the Render dashboard.
-* **`rootDir: backend` may prevent Render from reading a repo-root
-  `.python-version` at all.** Both Python services set `rootDir: backend`, and
-  the file lives at the repository root. Render's documentation describes the
-  file as living at the repo root, and what it does when `rootDir` moves the
-  build root is not something this repository can settle. If the pin is not
-  picked up, Render falls back to its own default Python — the fix would be to
-  move the file under `backend/`, which needs a decision rather than a guess.
+What still needs a person in the Render dashboard:
+
+* **No `PYTHON_VERSION` env var may be set** on either Python service (or in
+  the `cetrak-runtime` env group). If it is, it wins over `.python-version`
+  and the pin is silently ignored. `render.yaml` does not set it, but
+  dashboard-only env vars are invisible from the repo.
+* **After the next Render deploy, the build log must show the expected Python
+  version.** That is the only way to confirm Render actually picked up
+  `backend/.python-version`.
+
+### Follow-ups (need approval before touching requirements)
+
+* **`dev.txt` alone cannot run the suite.** `config.settings.prod` imports
+  `dj_database_url` and `gunicorn`/`whitenoise` are production-only, so CI
+  installs both files. The requirements files are untouched. A follow-up needs
+  a decision: either make `dev.txt` include `prod.txt` (one `-r prod.txt`
+  line) so `dev.txt` is a complete test/dev definition again, or keep the
+  two-file install and document it as the intended shape.
+* **`jsonschema` should be a test dependency**, or
+  `test_manifest_matches_the_published_render_schema` stays skipped — including
+  its loss of the render.yaml schema validation.
 
 ### Known Python mismatch (not changed)
 
 `infra/Dockerfile` pins `FROM python:3.12-slim`, so local Docker development
-runs 3.12 while CI and production now run 3.13. It was left alone deliberately:
-nothing depends on 3.12 in the requirements, so it is a drift to be aware of
-rather than a break, and changing it was not in scope.
+runs 3.12 while CI and (pinned) production run 3.13. Left alone deliberately —
+an open item, not a break.
 
 ### Fixes made
 
 * `73e388f` — *chore: pin Python 3.13 via .python-version for CI and Render*.
-  Adds `.python-version` (`3.13`, verified in the committed blob as exactly
-  `3.13` + LF), converts both jobs to `python-version-file: .python-version`,
-  and deletes `backend/runtime.txt`. No other file referenced it.
+  First Python fix: `.python-version` at the repo root, both jobs on
+  `python-version-file`, deletes `backend/runtime.txt`.
+* `c39a754` — *ci: install prod deps and read Python pin from
+  backend/.python-version*. Second CI fix: installs both requirement files, and
+  moves the pin into `backend/` where Render can read it.
 
-Known mismatch left in place: `infra/Dockerfile` (`python:3.12-slim`).
+Open items left in place: `infra/Dockerfile` (`python:3.12-slim`), and the two
+follow-ups above.
